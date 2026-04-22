@@ -102,14 +102,25 @@ pulsecart/
 ```
 
 ---
+## 🧠 Intelligence Layer: Retail Business Logic
 
-## 💡 Key Design Decisions
+PulseCart isn't just a dashboard; it's built on real-world e-commerce heuristics and mathematical models:
 
-- **INR formatting** throughout (₹L, ₹Cr) — built specifically for Indian retail market
-- **Realistic retail data model** — not generic "sales/customers", but GMV, AOV, ROAS, CAC, LTV, inventory turnover
-- **ML cohort logic** — cart abandonment propensity model segments users by behavioral signals (price-checking, mobile dropout, first-visit)
-- **Domain-specific AI** — chatbot is prompted as a retail analyst, not a generic assistant
+### 1. The ML Propensity Model (Cart Abandonment)
+Instead of a simple "yes/no" tracker, I implemented a **Cohort-Based Propensity Score**. It weights three specific behavioral signals:
+* **Price Sensitivity:** Users who visit a product page >3 times without adding to cart.
+* **Platform Friction:** Mobile vs. Desktop dropout rates in the checkout funnel.
+* **Intent Decay:** Calculating time-since-last-action to trigger "Win-back" notifications.
 
+### 2. GMV Forecasting Math
+The forecasting tab uses **Linear Regression with Trend Decomposition**. It accounts for:
+* **Seasonality:** Recognizing that Indian retail spikes during festive periods (modeled in the mock data).
+* **Moving Averages:** Reducing "noise" from single-day anomalies to show the true growth trajectory.
+
+### 3. Financial Metrics (The "Retailer's Vocabulary")
+* **AOV (Average Order Value):** Vital for understanding if cross-selling strategies are working.
+* **Inventory Turnover:** Calculated as `Sales / Average Inventory`. A low ratio flags "Dead Stock," while a high ratio warns of potential "Stock-outs."
+* **ROAS (Return on Ad Spend):** Tracks which marketing channel (Google, Meta, Instagram) is actually driving profitable GMV.
 ---
 
 *Built with React.js · Recharts · Anthropic Claude API*
