@@ -4,7 +4,7 @@
 
 ---
 
-## 🚀 Features
+##  Features
 
 ### Real-Time Monitoring
 - **Live GMV, Orders, Active Sessions** — updated every 1.8 seconds via simulated Socket.IO events
@@ -30,10 +30,10 @@
 - **ROAS** & **CAC** by channel
 
 ### Extra Features
-- 🌗 **Dark / Light mode toggle**
-- 📥 **Export any dataset as CSV** (GMV, Categories, Channels, Forecast, etc.)
-- 📅 **Date range filter** — 7D / 30D / 60D / 90D views
-- 🤖 **AI Chatbot** — embedded retail analytics assistant (powered by Claude API)
+-  **Dark / Light mode toggle**
+-  **Export any dataset as CSV** (GMV, Categories, Channels, Forecast, etc.)
+-  **Date range filter** — 7D / 30D / 60D / 90D views
+-  **AI Chatbot** — embedded retail analytics assistant (powered by Claude API)
 
 ### Dashboard Tabs
 1. **Overview** — KPI grid, GMV area chart, category breakdown, region table
@@ -44,7 +44,7 @@
 
 ---
 
-## 🛠 Tech Stack
+##  Tech Stack
 
 **Frontend**
 - React.js 18
@@ -65,7 +65,7 @@
 
 ---
 
-## ⚡ Quick Start
+##  Quick Start
 
 ### Prerequisites
 - [Node.js LTS](https://nodejs.org) installed
@@ -84,7 +84,7 @@ Opens at **http://localhost:3000**
 
 ---
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 pulsecart/
@@ -103,7 +103,7 @@ pulsecart/
 
 ---
 
-## 💡 Key Design Decisions
+##  Key Design Decisions
 
 - **INR formatting** throughout (₹L, ₹Cr) — built specifically for Indian retail market
 - **Realistic retail data model** — not generic "sales/customers", but GMV, AOV, ROAS, CAC, LTV, inventory turnover
@@ -112,4 +112,3 @@ pulsecart/
 
 ---
 
-*Built with React.js · Recharts · Anthropic Claude API*
