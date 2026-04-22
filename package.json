@@ -1,6 +1,8 @@
 {
   "name": "pulsecart",
   "version": "1.0.0",
+  "homepage": "https://pranjal-p.github.io/pulsecart",
+  "private": true,
   "private": true,
   "dependencies": {
     "react": "^18.2.0",
