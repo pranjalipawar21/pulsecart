@@ -1,0 +1,74 @@
+{
+  // ── Editor ──────────────────────────────────────────────────────────────────
+  "editor.fontSize": 13,
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.wordWrap": "on",
+  "editor.minimap.enabled": false,
+  "editor.bracketPairColorization.enabled": true,
+  "editor.guides.bracketPairs": true,
+  "editor.suggest.preview": true,
+  "editor.inlineSuggest.enabled": true,
+
+  // ── Files ───────────────────────────────────────────────────────────────────
+  "files.autoSave": "onFocusChange",
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/build": true,
+    "**/.git": true
+  },
+
+  // ── JavaScript / React ───────────────────────────────────────────────────────
+  "javascript.updateImportsOnFileMove.enabled": "always",
+  "javascript.suggest.autoImports": true,
+  "emmet.includeLanguages": { "javascript": "javascriptreact" },
+  "emmet.triggerExpansionOnTab": true,
+
+  // ── ESLint ──────────────────────────────────────────────────────────────────
+  "eslint.validate": ["javascript", "javascriptreact"],
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+
+  // ── Prettier ────────────────────────────────────────────────────────────────
+  "prettier.singleQuote": false,
+  "prettier.semi": true,
+  "prettier.trailingComma": "es5",
+  "prettier.printWidth": 100,
+
+  // ── Terminal ────────────────────────────────────────────────────────────────
+  "terminal.integrated.defaultProfile.windows": "Command Prompt",
+  "terminal.integrated.fontSize": 12,
+
+  // ── Search ──────────────────────────────────────────────────────────────────
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/build": true,
+    "**/.git": true,
+    "**/package-lock.json": true
+  },
+
+  // ── Extensions recommended for this project ──────────────────────────────────
+  // Install these from VS Code Extensions panel:
+  //   esbenp.prettier-vscode      — code formatter
+  //   dbaeumer.vscode-eslint      — linting
+  //   dsznajder.es7-react-js-snippets — rfc, useState snippets
+  //   burkeholland.simple-react-snippets
+  //   formulahendry.auto-rename-tag  — rename JSX tags automatically
+  //   naumovs.color-highlight        — see colors inline
+  //   streetsidesoftware.code-spell-checker
+
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  }
+}
