@@ -196,6 +196,58 @@ Consider Indian e-commerce calendar: Diwali, Valentine's, Holi, Eid, Independenc
     console.error('Anomaly explain error:', err.message);
     res.status(500).json({ error: 'Explanation failed', detail: err.message });
   }
+// ─── POST /api/ai/chat ────────────────────────────────────────────────────────
+// Natural language chatbot handler using context data
+router.post('/chat', requireAuth, async (req, res) => {
+  const { query, history, contextData } = req.body;
+  if (!query) return res.status(400).json({ error: 'Query is required' });
+
+  const GEMINI_KEY = process.env.GEMINI_API_KEY;
+  if (!GEMINI_KEY) {
+    return res.status(503).json({ error: 'Add GEMINI_API_KEY to server/.env' });
+  }
+
+  const { kpis, channels, inventory } = contextData || {};
+  const fmtINR = n => n ? `₹${Number(n).toLocaleString('en-IN')}` : '0';
+
+  const systemText = `You are PulseCart AI, an embedded analytics assistant for an Indian e-commerce retail intelligence dashboard.
+
+Dashboard context (live data):
+- GMV: ${fmtINR(kpis?.gmv)}
+- AOV: ${fmtINR(kpis?.aov)}
+- Conversion rate: ${kpis?.convRate?.toFixed(2) ?? "N/A"}%
+- Cart abandonment: ${kpis?.cartAbandRate?.toFixed(1) ?? "N/A"}%
+- Return rate: ${kpis?.returnRate?.toFixed(1) ?? "N/A"}%
+- Net revenue: ${fmtINR(kpis?.netRevenue)}
+- Customer LTV: ${fmtINR(kpis?.ltv)}
+- Inventory turnover: ${kpis?.invTurnover?.toFixed(1) ?? "N/A"}×
+- Top channel by ROAS: ${channels?.length ? [...channels].sort((a, b) => b.roas - a.roas)[0].ch : "N/A"}
+- Critical inventory SKUs: ${inventory?.filter(i => i.status === "critical")?.length ?? 0}
+
+Rules: Answer concisely using the live data above. Use INR formatting. Reference real benchmarks (Baymard, Redseer, CRISIL). Keep responses under 200 words. Do not hallucinate.`;
+
+  try {
+    const contents = [...(history || []), { role: 'user', parts: [{ text: query }] }];
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemText }] },
+          contents,
+          generationConfig: { maxOutputTokens: 512, temperature: 0.4 },
+        }),
+      }
+    );
+    if (!response.ok) throw new Error(`Gemini API ${response.status}`);
+    const data = await response.json();
+    const answer = data.candidates?.[0]?.content?.parts?.map(p => p.text).join('').trim() || 'No response.';
+    res.json({ answer });
+  } catch (err) {
+    console.error('Chat error:', err.message);
+    res.status(500).json({ error: 'Chat failed', detail: err.message });
+  }
 });
 
 module.exports = router;

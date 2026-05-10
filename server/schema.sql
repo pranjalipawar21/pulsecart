@@ -1,6 +1,7 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- PulseCart MySQL Schema
 -- Run: mysql -u root -p < schema.sql
+-- Or: node server/seed.js (auto-creates everything)
 -- ─────────────────────────────────────────────────────────────────────────────
 
 CREATE DATABASE IF NOT EXISTS pulsecart CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -26,7 +27,7 @@ CREATE TABLE IF NOT EXISTS inventory (
   reorder_threshold INT NOT NULL DEFAULT 50,
   turnover          DECIMAL(5,1) DEFAULT 0,
   price             DECIMAL(10,2) DEFAULT 0,
-  status            VARCHAR(10) AS (
+  status            VARCHAR(10) GENERATED ALWAYS AS (
     CASE WHEN stock < 20                  THEN 'critical'
          WHEN stock < reorder_threshold   THEN 'low'
          ELSE 'healthy' END
@@ -47,7 +48,7 @@ CREATE TABLE IF NOT EXISTS orders (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Reorder log (tracks when owner triggered reorder and for which SKU)
+-- Reorder log
 CREATE TABLE IF NOT EXISTS reorder_log (
   id           INT AUTO_INCREMENT PRIMARY KEY,
   inventory_id INT NOT NULL,
@@ -59,14 +60,36 @@ CREATE TABLE IF NOT EXISTS reorder_log (
   FOREIGN KEY (triggered_by) REFERENCES users(id)
 );
 
--- Analytics snapshot (cached KPI snapshots)
-CREATE TABLE IF NOT EXISTS analytics_snapshot (
+-- KPI snapshots
+CREATE TABLE IF NOT EXISTS kpis (
+  id              INT AUTO_INCREMENT PRIMARY KEY,
+  gmv             BIGINT NOT NULL,
+  net_revenue     BIGINT NOT NULL,
+  aov             INT NOT NULL,
+  conv_rate       DECIMAL(5,2) NOT NULL,
+  cart_aband_rate DECIMAL(5,2) NOT NULL,
+  return_rate     DECIMAL(5,2) NOT NULL,
+  ltv             INT NOT NULL,
+  inv_turnover    DECIMAL(5,2) NOT NULL,
+  snapshot_date   DATE NOT NULL DEFAULT (CURRENT_DATE),
+  created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- GMV time series (90-day daily data)
+CREATE TABLE IF NOT EXISTS gmv_series (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  date_label VARCHAR(10) NOT NULL,
+  gmv        BIGINT NOT NULL,
+  orders     INT NOT NULL,
+  UNIQUE KEY uq_date (date_label)
+);
+
+-- Sentiment analysis history
+CREATE TABLE IF NOT EXISTS sentiment_history (
   id          INT AUTO_INCREMENT PRIMARY KEY,
-  snapshot_date DATE NOT NULL,
-  gmv         BIGINT,
-  net_revenue BIGINT,
-  aov         INT,
-  conv_rate   DECIMAL(5,2),
-  return_rate DECIMAL(5,2),
-  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  url         TEXT NOT NULL,
+  platform    VARCHAR(30),
+  identifier  VARCHAR(100),
+  result_json JSON,
+  analyzed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

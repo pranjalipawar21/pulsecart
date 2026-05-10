@@ -1,16 +1,12 @@
 const router = require('express').Router();
 const { requireAuth, requireOwner } = require('../middleware/auth');
+const { getPool, isAvailable } = require('../db');
 
-// ─── Static analytics data (anchored to Redseer India 2024 benchmarks) ────────
-const KPI_DATA = {
-  gmv:           83500000,
-  netRevenue:    58450000,
-  aov:           1847,
-  convRate:      3.24,
-  cartAbandRate: 71.4,
-  returnRate:    8.6,
-  ltv:           6840,
-  invTurnover:   8.2,
+// ─── Fallback data (used if MySQL is unavailable) ─────────────────────────────
+const KPI_FALLBACK = {
+  gmv: 83500000, netRevenue: 58450000, aov: 1847,
+  convRate: 3.24, cartAbandRate: 71.4, returnRate: 8.6,
+  ltv: 6840, invTurnover: 8.2,
 };
 
 const CATEGORY_DATA = [
@@ -32,21 +28,41 @@ const CHANNEL_DATA = [
   { ch: 'Direct',         sessions:  63000, conv: 2.38, revenue:  6740000, cac:   0, roas: 99.9  },
 ];
 
-// SKU-level sales trend (new endpoint — not in old frontend)
-const SKU_TRENDS = [
-  { sku: 'Redmi Note 13 Pro',        cat: 'Electronics',  last30: 1840, last60: 3420, trend: +12.4, revenue: 45979200 },
-  { sku: 'Nike Air Max 270',         cat: 'Sports',       last30:  620, last60: 1180, trend:  +8.1, revenue:  7436900 },
-  { sku: 'Mamaearth Ubtan FW',       cat: 'Health/Beauty',last30: 2900, last60: 5310, trend: +14.2, revenue:   867100 },
-  { sku: 'ASUS VivoBook 15',         cat: 'Electronics',  last30:  340, last60:  670, trend:  +3.6, revenue: 14616600 },
-  { sku: 'Libas Printed Kurti',      cat: 'Fashion',      last30: 3120, last60: 5840, trend: +18.1, revenue:  2804880 },
-  { sku: 'boAt Airdopes 141',        cat: 'Electronics',  last30: 1980, last60: 3710, trend:  +9.7, revenue:  2572020 },
-  { sku: 'Atomic Habits (Book)',     cat: 'Books',        last30: 1640, last60: 3010, trend:  +6.3, revenue:   654360 },
-  { sku: 'Prestige Pressure Cooker', cat: 'Home/Kitchen', last30:  880, last60: 1620, trend:  -2.1, revenue:  2199120 },
-];
-
 // ─── GET /api/analytics/kpis ─────────────────────────────────────────────────
-router.get('/kpis', requireAuth, requireOwner, (req, res) => {
-  res.json(KPI_DATA);
+router.get('/kpis', requireAuth, requireOwner, async (req, res) => {
+  if (isAvailable()) {
+    try {
+      const pool = getPool();
+      const [rows] = await pool.execute('SELECT * FROM kpis ORDER BY id DESC LIMIT 1');
+      if (rows.length > 0) {
+        const k = rows[0];
+        return res.json({
+          gmv: Number(k.gmv), netRevenue: Number(k.net_revenue), aov: Number(k.aov),
+          convRate: Number(k.conv_rate), cartAbandRate: Number(k.cart_aband_rate),
+          returnRate: Number(k.return_rate), ltv: Number(k.ltv), invTurnover: Number(k.inv_turnover),
+        });
+      }
+    } catch (err) {
+      console.warn('KPIs MySQL error, using fallback:', err.message);
+    }
+  }
+  res.json(KPI_FALLBACK);
+});
+
+// ─── GET /api/analytics/gmv-series ───────────────────────────────────────────
+router.get('/gmv-series', requireAuth, requireOwner, async (req, res) => {
+  if (isAvailable()) {
+    try {
+      const pool = getPool();
+      const [rows] = await pool.execute('SELECT date_label AS date, gmv, orders_count AS orders FROM gmv_series ORDER BY id ASC');
+      if (rows.length > 0) {
+        return res.json(rows.map(r => ({ date: r.date, gmv: Number(r.gmv), orders: Number(r.orders) })));
+      }
+    } catch (err) {
+      console.warn('GMV series MySQL error, using fallback:', err.message);
+    }
+  }
+  res.json([]);
 });
 
 // ─── GET /api/analytics/categories ───────────────────────────────────────────
@@ -57,11 +73,6 @@ router.get('/categories', requireAuth, requireOwner, (req, res) => {
 // ─── GET /api/analytics/channels ─────────────────────────────────────────────
 router.get('/channels', requireAuth, requireOwner, (req, res) => {
   res.json(CHANNEL_DATA);
-});
-
-// ─── GET /api/analytics/sku-trends ───────────────────────────────────────────
-router.get('/sku-trends', requireAuth, requireOwner, (req, res) => {
-  res.json(SKU_TRENDS);
 });
 
 module.exports = router;

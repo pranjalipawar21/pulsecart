@@ -2,7 +2,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // React 18 entry point with:
 //   - Error boundary (catches any component crash gracefully)
-//   - StrictMode (dev-only double invoke — seedFirebase guard handles this)
+//   - StrictMode (dev-only double invoke)
 //   - IBM Plex Sans font preload
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -60,7 +60,7 @@ class ErrorBoundary extends React.Component {
             PulseCart hit an error
           </div>
           <div style={{ fontSize: 13, color: T.muted, lineHeight: 1.7, marginBottom: 24 }}>
-            An unexpected error occurred. This is usually caused by an API connectivity issue or a stale cache. Try refreshing the page.
+            An unexpected error occurred. This may be caused by a network connectivity issue or a stale cache. Try refreshing the page.
           </div>
 
           {/* Error detail */}

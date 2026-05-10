@@ -30,12 +30,8 @@ router.post('/login', async (req, res) => {
 
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
-    // For in-memory fallback users (placeholder hash), compare directly.
-    // For MySQL users with real bcrypt hashes, use bcrypt.compare.
-    const isPlaceholder = user.password_hash === '$2a$10$abcdefghijklmnopqrstuuVGVFt.4KQLF9p94CvD3JQYfBzRzF5m6';
-    const valid = isPlaceholder
-      ? password === 'pranjal@123'
-      : await bcrypt.compare(password, user.password_hash);
+    // Validate password with bcrypt
+    const valid = await bcrypt.compare(password, user.password_hash);
 
     if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
 

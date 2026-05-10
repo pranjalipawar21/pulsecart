@@ -212,7 +212,7 @@ function ConfBar({ score, T }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN SENTIMENT COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
-export default function Sentiment({ T }) {
+export default function Sentiment({ T, apiFetch }) {
   const [analysed]    = useState(() => analyseAll(REVIEW_DATASET));
   const [catFilter,   setCatFilter]   = useState("All");
   const [sentFilter,  setSentFilter]  = useState("All");
@@ -241,44 +241,27 @@ export default function Sentiment({ T }) {
     if (!liveText.trim() || llmLoading) return;
     setLlmLoading(true);
     setLlmResult(null);
-    const GEMINI_KEY = process.env.REACT_APP_GEMINI_API_KEY;
-    if (!GEMINI_KEY) {
-      setLlmResult({ error: "Add REACT_APP_GEMINI_API_KEY to .env.local to enable LLM analysis." });
+    
+    if (!apiFetch) {
+      setLlmResult({ error: "Backend not connected. LLM analysis requires backend API." });
       setLlmLoading(false);
       return;
     }
+
     try {
-      const prompt = `You are a sentiment analysis engine for Indian e-commerce product reviews.
-
-Analyse this review and respond ONLY with valid JSON (no markdown, no extra text):
-{
-  "sentiment": "positive" | "neutral" | "negative",
-  "score": <number -1.0 to 1.0>,
-  "confidence": <number 0.0 to 1.0>,
-  "aspects": [{ "aspect": "<aspect name>", "sentiment": "positive"|"neutral"|"negative", "phrase": "<supporting phrase>" }],
-  "summary": "<one sentence explanation>",
-  "recommended_action": "<brief CX/product action recommendation>"
-}
-
-Review: "${liveText.replace(/"/g, "'")}"`;
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: 600, temperature: 0.1 },
-          }),
-        }
-      );
-      if (!res.ok) throw new Error(`Gemini API ${res.status}`);
-      const data    = await res.json();
-      const raw     = data.candidates?.[0]?.content?.parts?.map(p => p.text).join("").trim() || "{}";
-      const cleaned = raw.replace(/```json|```/g, "").trim();
-      setLlmResult(JSON.parse(cleaned));
+      const res = await apiFetch('/api/sentiment/analyze-text', {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: liveText }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `API returned ${res.status}`);
+      }
+      const data = await res.json();
+      setLlmResult(data);
     } catch (e) {
-      setLlmResult({ error: "Gemini analysis failed. Rule-based result is shown above.", detail: e.message });
+      setLlmResult({ error: "Analysis failed.", detail: e.message });
     }
     setLlmLoading(false);
   }
@@ -308,51 +291,29 @@ Review: "${liveText.replace(/"/g, "'")}"`;
     setPipelineResult(null);
 
     const addLog = (msg) => setPipelineLog(prev => [...prev, { msg, ts: new Date().toLocaleTimeString("en-IN") }]);
-    const GEMINI_KEY = process.env.REACT_APP_GEMINI_API_KEY;
 
     addLog(`Parsing URL: ${urlInput}`);
     const productInfo = extractProductInfo(urlInput);
     await new Promise(r => setTimeout(r, 300));
     addLog(`Detected platform: ${productInfo.platform} · Identifier: ${productInfo.identifier}`);
 
-    addLog(`Calling Gemini API for ${productInfo.platform} product analysis…`);
+    addLog(`Calling Backend API for ${productInfo.platform} product analysis…`);
 
-    if (!GEMINI_KEY) {
-      addLog("⚠ No API key found. Simulating Gemini analysis for demo purposes...");
+    // If apiFetch is not provided (e.g. running in purely static fallback mode)
+    // or backend fails, we fallback to mock data
+    if (!apiFetch) {
+      addLog("⚠ Backend not connected. Simulating analysis for demo purposes...");
       await new Promise(r => setTimeout(r, 2000));
       addLog("✓ Extracted 120 reviews. Performing aspect-based sentiment analysis...");
       await new Promise(r => setTimeout(r, 1500));
       addLog("✓ Complete! Generating product summary...");
       
-      const pName = productInfo.slug ? productInfo.slug.replace(/\b\w/g, c => c.toUpperCase()) : "Premium Product";
-      const isFashion = /blouse|shirt|dress|jeans|top|apparel|textiles/i.test(urlInput + pName);
-
-      const mockResult = isFashion ? {
-        product: pName,
-        brand: productInfo.slug?.split(" ")[0]?.toUpperCase() || "Fashion Brand",
-        category: "Clothing & Apparel",
-        priceRange: "₹499 - ₹1,299",
-        total: 240,
-        positive: 180,
-        neutral: 40,
-        negative: 20,
-        avgRating: 4.4,
-        avgScore: 0.72,
-        aspects: [
-          { aspect: "Fabric Quality", sentiment: "positive", count: 85, phrase: "soft material, comfortable to wear" },
-          { aspect: "Fit & Size", sentiment: "neutral", count: 45, phrase: "runs slightly small, order one size up" },
-          { aspect: "Design/Look", sentiment: "positive", count: 60, phrase: "beautiful color, looks exactly like photo" },
-          { aspect: "Durability", sentiment: "negative", count: 15, phrase: "color faded slightly after first wash" }
-        ],
-        topPositive: "The fit is perfect and the fabric feels very premium for this price. Highly recommend!",
-        topNegative: "Received a slightly different shade than what was shown in the pictures. Size is also a bit tight.",
-        recommendation: "Focus on size-guide accuracy and fabric longevity to reduce return rates in the apparel segment.",
-        competitorComparison: "Better fabric density than budget alternatives, but sizing is less consistent than top-tier brands."
-      } : {
-        product: pName,
-        brand: productInfo.slug?.split(" ")[0]?.toUpperCase() || "Tech Brand",
-        category: "Electronics",
-        priceRange: "₹2,500 - ₹4,999",
+      const pName = productInfo.slug ? productInfo.slug.replace(/\b\w/g, c => c.toUpperCase()) : "Smart Earbuds";
+      const mockResult = {
+        product: `Philips ${pName} - In-Ear Bluetooth TWS`,
+        brand: "Philips",
+        category: "Audio",
+        priceRange: "₹1,200 - ₹1,500",
         total: 120,
         positive: 85,
         neutral: 20,
@@ -360,15 +321,15 @@ Review: "${liveText.replace(/"/g, "'")}"`;
         avgRating: 4.2,
         avgScore: 0.65,
         aspects: [
-          { aspect: "Performance", sentiment: "positive", count: 45, phrase: "snappy UI, no lag in daily tasks" },
-          { aspect: "Battery Life", sentiment: "positive", count: 30, phrase: "easily lasts a full day" },
-          { aspect: "Build Quality", sentiment: "neutral", count: 25, phrase: "sturdy but feels a bit heavy" },
-          { aspect: "Value for Money", sentiment: "positive", count: 12, phrase: "best specs in this price segment" }
+          { aspect: "Sound Quality", sentiment: "positive", count: 45, phrase: "good bass, clear vocals" },
+          { aspect: "Battery Life", sentiment: "positive", count: 30, phrase: "lasts over 30 hours easily" },
+          { aspect: "Build Quality", sentiment: "neutral", count: 25, phrase: "feels a bit plasticky" },
+          { aspect: "Connectivity", sentiment: "negative", count: 12, phrase: "bluetooth drops occasionally" }
         ],
-        topPositive: "Excellent value for money. Performance is top-notch and battery is reliable.",
-        topNegative: "The charging speed is a bit slow compared to modern standards. Otherwise great.",
-        recommendation: "Improve fast-charging capabilities in the next iteration to stay competitive.",
-        competitorComparison: "Performance matches higher-priced models, but missing some premium features like wireless charging."
+        topPositive: "Excellent sound for the price. The bass is punchy and battery lasts forever.",
+        topNegative: "Left earbud stopped pairing after 2 weeks. Plastic quality is cheap.",
+        recommendation: "Recommended for budget buyers looking for battery life and brand reliability, but warn users about occasional pairing issues.",
+        competitorComparison: "Better battery than boAt Airdopes 141, but build quality feels less premium compared to Realme Buds."
       };
       
       setPipelineResult(mockResult);
@@ -377,64 +338,28 @@ Review: "${liveText.replace(/"/g, "'")}"`;
       return;
     }
 
-    const prompt = `You are a product review sentiment analysis engine for Indian e-commerce.
-
-I have a product URL from ${productInfo.platform}: ${urlInput}
-Product identifier: ${productInfo.identifier}
-${productInfo.slug ? `Product slug: ${productInfo.slug}` : ""}
-
-Based on your knowledge of this actual product, analyze what real customer reviews typically say about it.
-
-Respond ONLY with valid JSON (no markdown, no extra text):
-{
-  "product": "<actual full product name as sold on ${productInfo.platform}>",
-  "brand": "<brand name>",
-  "category": "<product category>",
-  "priceRange": "<typical price range in INR>",
-  "total": <estimated number of reviews you're basing analysis on, realistic number between 50-500>,
-  "positive": <count of positive reviews>,
-  "neutral": <count of neutral reviews>,
-  "negative": <count of negative reviews>,
-  "avgRating": <average rating 1.0-5.0>,
-  "avgScore": <sentiment score -1.0 to 1.0>,
-  "aspects": [
-    { "aspect": "<aspect name like Build Quality, Performance, Value, Delivery, etc>", "sentiment": "positive"|"neutral"|"negative", "count": <number>, "phrase": "<typical phrases customers use>" }
-  ],
-  "topPositive": "<most representative positive review text, realistic Indian English>",
-  "topNegative": "<most representative negative review text, realistic Indian English>",
-  "recommendation": "<specific actionable recommendation for the seller/brand based on the sentiment patterns>",
-  "competitorComparison": "<brief comparison with main competitor product>"
-}
-
-IMPORTANT: Use your real knowledge about this product. Do NOT make up generic data.`;
-
     try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: 1200, temperature: 0.3 },
-          }),
-        }
-      );
+      const res = await apiFetch('/api/sentiment/analyze-url', {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: urlInput }),
+      });
 
-      if (!res.ok) throw new Error(`Gemini API returned ${res.status}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Server returned ${res.status}`);
+      }
+      
       await new Promise(r => setTimeout(r, 200));
-      addLog("Gemini response received · parsing structured output…");
+      addLog("Backend response received · parsing structured output…");
 
-      const data = await res.json();
-      const raw = data.candidates?.[0]?.content?.parts?.map(p => p.text).join("").trim() || "{}";
-      const cleaned = raw.replace(/```json|```/g, "").trim();
-      const result = JSON.parse(cleaned);
+      const result = await res.json();
 
       addLog(`Product identified: ${result.product || "Unknown"} (${result.brand || ""})`);
       await new Promise(r => setTimeout(r, 200));
       addLog(`Analysed ${result.total || 0} reviews · ${result.aspects?.length || 0} aspects detected`);
       await new Promise(r => setTimeout(r, 150));
-      addLog(`✓ Pipeline complete — ${result.total || 0} reviews analysed via Gemini`);
+      addLog(`✓ Pipeline complete — ${result.total || 0} reviews analysed via AI`);
 
       setPipelineResult({
         product:        result.product || productInfo.slug || "Product",
@@ -472,60 +397,37 @@ IMPORTANT: Use your real knowledge about this product. Do NOT make up generic da
     setAiLoading(true);
     setAiResult(null);
 
-    const GEMINI_KEY = process.env.REACT_APP_GEMINI_API_KEY;
-
-    if (!GEMINI_KEY) {
-      // Mock fallback for live portfolio site without an API key
-      await new Promise(r => setTimeout(r, 2000));
-      setAiResult({
-        summary: `Sentiment for ${aiCat} is generally positive, but with rising concerns around last-mile delivery and packaging quality. Value for money remains the strongest driver of positive sentiment.`,
-        strengths: ["High perceived value for money", "Feature richness compared to competitors", "Brand trust and reliability"],
-        weaknesses: ["Delivery delays in tier-2/3 cities", "Inconsistent packaging quality causing damage", "Post-purchase customer support is slow"],
-        topConcern: "Damaged items upon delivery due to inadequate packaging material.",
-        recommendation: "Audit packaging standards for top-selling SKUs and prioritize 3PL partners with better damage-free rates.",
-        npsEstimate: 32,
-        priority: "medium"
-      });
+    if (!apiFetch) {
+      setAiResult({ error: "Backend not connected. LLM analysis requires backend API." });
       setAiLoading(false);
       return;
     }
 
     try {
-      const prompt = `You are an expert e-commerce analyst. Analyze the following category: ${aiCat}. 
-Based on typical Indian e-commerce trends, provide insights.
+      const catData = analysed.filter(r => r.cat === aiCat);
+      const stats = {
+        total: catData.length,
+        positive: catData.filter(r => r.label === "positive").length,
+        negative: catData.filter(r => r.label === "negative").length,
+        avgScore: (catData.reduce((s, r) => s + r.score, 0) / Math.max(1, catData.length)).toFixed(2)
+      };
 
-Respond ONLY with valid JSON (no markdown, no extra text):
-{
-  "summary": "<2 sentence summary of overall sentiment>",
-  "strengths": ["<strength 1>", "<strength 2>", "<strength 3>"],
-  "weaknesses": ["<weakness 1>", "<weakness 2>", "<weakness 3>"],
-  "topConcern": "<single biggest customer pain point>",
-  "recommendation": "<specific actionable recommendation for the product/CX team>",
-  "npsEstimate": <number -100 to 100>,
-  "priority": "high" | "medium" | "low"
-}`;
-
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: 800, temperature: 0.2 },
-          }),
-        }
-      );
-      if (!res.ok) throw new Error(`Gemini API ${res.status}`);
-      const data  = await res.json();
-      const raw   = data.candidates?.[0]?.content?.parts?.map(p => p.text).join("").trim() || "{}";
-      const clean = raw.replace(/```json|```/g, "").trim();
-      setAiResult(JSON.parse(clean));
+      const res = await apiFetch('/api/sentiment/analyze-category', {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category: aiCat, stats }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `API returned ${res.status}`);
+      }
+      const data = await res.json();
+      setAiResult(data);
     } catch (e) {
       setAiResult({ error: "Analysis failed.", detail: e.message });
     }
     setAiLoading(false);
-  }, [aiCat, aiLoading]);
+  }, [aiCat, aiLoading, analysed, apiFetch]);
 
   // ── Computed stats ──────────────────────────────────────────────────────────
   const filtered = analysed.filter(r => {

@@ -4,12 +4,10 @@ import { useState, useRef, useEffect } from "react";
 // Pure deterministic model — works offline, zero latency, no API key needed.
 // Covers ~85% of expected retail-analytics queries. LLM handles the rest.
 
-const fmtINR = (n) => {
-  const val = n ?? 0;
-  return val >= 1e7 ? `₹${(val / 1e7).toFixed(2)}Cr` :
-         val >= 1e5 ? `₹${(val / 1e5).toFixed(1)}L`  :
-         val >= 1e3 ? `₹${(val / 1e3).toFixed(1)}K`  : `₹${Math.round(val)}`;
-};
+const fmtINR = (n) =>
+  n >= 1e7 ? `₹${(n / 1e7).toFixed(2)}Cr` :
+  n >= 1e5 ? `₹${(n / 1e5).toFixed(1)}L`  :
+  n >= 1e3 ? `₹${(n / 1e3).toFixed(1)}K`  : `₹${Math.round(n)}`;
 
 const INTENTS = [
   {
@@ -18,26 +16,21 @@ const INTENTS = [
     respond: ({ kpis, gmvSeries }) => {
       const last = gmvSeries?.slice(-1)[0];
       const prev = gmvSeries?.slice(-2, -1)[0];
-      const dayChange = (last && prev && prev.gmv > 0) ? (((last.gmv - prev.gmv) / prev.gmv) * 100).toFixed(1) : null;
-      const gmv = kpis?.gmv ?? 0;
-      const net = kpis?.netRevenue ?? 0;
-      const margin = gmv > 0 ? ((net / gmv) * 100).toFixed(1) : "0";
-      return `**GMV Overview**\n\nCurrent GMV is **${fmtINR(gmv)}**. ${dayChange ? `Day-over-day change: ${dayChange > 0 ? "+" : ""}${dayChange}%.` : ""}\n\nNet revenue after returns and COGS is **${fmtINR(net)}**, giving a margin efficiency ratio of **${margin}%**.\\n\\n*Tip: Use the Profitability Simulator on the Overview tab to model discount scenarios.*`;
+      const dayChange = last && prev ? (((last.gmv - prev.gmv) / prev.gmv) * 100).toFixed(1) : null;
+      return `**GMV Overview**\n\nCurrent GMV is **${fmtINR(kpis.gmv)}**. ${dayChange ? `Day-over-day change: ${dayChange > 0 ? "+" : ""}${dayChange}%.` : ""}\n\nNet revenue after returns and COGS is **${fmtINR(kpis.netRevenue)}**, giving a margin efficiency ratio of **${((kpis.netRevenue / kpis.gmv) * 100).toFixed(1)}%**.\n\n*Tip: Use the Profitability Simulator on the Overview tab to model discount scenarios.*`;
     },
   },
   {
     id: "aov",
     patterns: [/aov/i, /avg order/i, /average order/i, /order value/i],
-    respond: ({ kpis }) => {
-      const aov = kpis?.aov ?? 0;
-      return `**Average Order Value (AOV)**\n\nCurrent AOV is **${fmtINR(aov)}**.\n\nFor Indian e-commerce, the Redseer 2024 benchmark for fashion/electronics mixed carts is ₹1,400–₹2,200. Your AOV vs benchmark: ${aov > 1400 ? "✓ above" : "↓ below"} median.\n\n*To lift AOV: bundle complementary SKUs, add a free-shipping threshold 15–20% above current AOV, or introduce a loyalty tier.*`;
-    },
+    respond: ({ kpis }) =>
+      `**Average Order Value (AOV)**\n\nCurrent AOV is **${fmtINR(kpis.aov)}**.\n\nFor Indian e-commerce, the Redseer 2024 benchmark for fashion/electronics mixed carts is ₹1,400–₹2,200. Your AOV vs benchmark: ${kpis.aov > 1400 ? "✓ above" : "↓ below"} median.\n\n*To lift AOV: bundle complementary SKUs, add a free-shipping threshold 15–20% above current AOV, or introduce a loyalty tier.*`,
   },
   {
     id: "abandonment",
     patterns: [/abandon/i, /cart drop/i, /checkout drop/i],
     respond: ({ kpis }) => {
-      const rate = kpis?.cartAbandRate ?? 0;
+      const rate = kpis.cartAbandRate;
       const severity = rate > 75 ? "critical" : rate > 68 ? "high" : "average";
       return `**Cart Abandonment Analysis**\n\nYour abandonment rate is **${rate.toFixed(1)}%** — ${severity} relative to the Baymard Institute global average of 70.2%.\n\n**Top causes (rule-based classification):**\n- Forced account creation (accounts for ~35% of abandonment)\n- Unexpected shipping cost at checkout (~23%)\n- Slow page load on mobile (~15%)\n\n**Recommended actions:**\n- Enable guest checkout\n- Show shipping cost early in funnel\n- Add exit-intent retargeting with 5–8% discount`;
     },
@@ -66,16 +59,14 @@ const INTENTS = [
   {
     id: "return_rate",
     patterns: [/return rate/i, /returns/i, /refund/i],
-    respond: ({ kpis }) => {
-      const rate = kpis?.returnRate ?? 0;
-      return `**Return Rate**\n\nCurrent return rate: **${rate.toFixed(1)}%**\nRedseer India 2024 avg: 8–12% (fashion), 4–6% (electronics)\n\n**Return reduction playbook:**\n- Add size-fit predictor for fashion SKUs\n- Mandate 4+ product images + 360° view\n- Flag high-return SKUs for description audit\n- Introduce "keep it" incentive for low-value items (< ₹500)`;
-    },
+    respond: ({ kpis }) =>
+      `**Return Rate**\n\nCurrent return rate: **${kpis.returnRate.toFixed(1)}%**\nRedseer India 2024 avg: 8–12% (fashion), 4–6% (electronics)\n\n**Return reduction playbook:**\n- Add size-fit predictor for fashion SKUs\n- Mandate 4+ product images + 360° view\n- Flag high-return SKUs for description audit\n- Introduce "keep it" incentive for low-value items (< ₹500)`,
   },
   {
     id: "ltv",
     patterns: [/ltv/i, /lifetime value/i, /customer value/i, /retention/i],
     respond: ({ kpis }) =>
-      `**Customer LTV**\n\nAverage LTV: **${fmtINR(kpis?.ltv ?? 0)}**\n\nLTV:CAC ratio benchmark (healthy = 3:1+). To calculate yours, divide LTV by your average CAC from the Channels tab.\n\n**LTV improvement levers:**\n- Email re-engagement at day 30 post-purchase\n- Subscription / replenishment nudges for consumables\n- Loyalty points with 6-month expiry (urgency without annoyance)\n- Post-purchase review request → drives repeat purchase rate +12% (Sailthru, 2023)`,
+      `**Customer LTV**\n\nAverage LTV: **${fmtINR(kpis.ltv)}**\n\nLTV:CAC ratio benchmark (healthy = 3:1+). To calculate yours, divide LTV by your average CAC from the Channels tab.\n\n**LTV improvement levers:**\n- Email re-engagement at day 30 post-purchase\n- Subscription / replenishment nudges for consumables\n- Loyalty points with 6-month expiry (urgency without annoyance)\n- Post-purchase review request → drives repeat purchase rate +12% (Sailthru, 2023)`,
   },
   {
     id: "forecast",
@@ -152,7 +143,7 @@ function MsgText({ text, T }) {
 }
 
 // ─── ChatBot component ────────────────────────────────────────────────────────
-export default function ChatBot({ T, kpis, gmvSeries, categories, channels, regions, inventory }) {
+export default function ChatBot({ T, kpis, gmvSeries, categories, channels, regions, inventory, apiFetch }) {
   const [open,     setOpen]     = useState(false);
   const [messages, setMessages] = useState([
     { role: "assistant", text: "Hi 👋 I'm PulseCart AI. Ask me about GMV, abandonment, inventory, channels, demand forecasting, or tax compliance.", ts: new Date() },
@@ -187,8 +178,7 @@ export default function ChatBot({ T, kpis, gmvSeries, categories, channels, regi
     }
 
     // 2. Fall back to Gemini LLM with dashboard context
-    const GEMINI_KEY = process.env.REACT_APP_GEMINI_API_KEY;
-    if (!GEMINI_KEY) {
+    if (!apiFetch) {
       // Mock fallback for live portfolio site without an API key
       await new Promise(r => setTimeout(r, 1500));
       const fallbackResponse = `**Gemini AI (Demo Mode)**\n\nBased on the live data context, the current GMV is **${fmtINR(kpis?.gmv ?? 0)}** with a Conversion Rate of **${kpis?.convRate?.toFixed(2) ?? "N/A"}%**. Your top performing channel is **${channels?.length ? [...channels].sort((a, b) => b.roas - a.roas)[0].ch : "N/A"}**.\n\n*Note: This is a simulated response for the portfolio demo because the live API key is hidden. In production, this uses Gemini 2.0 Flash for dynamic natural language queries.*`;
@@ -201,44 +191,26 @@ export default function ChatBot({ T, kpis, gmvSeries, categories, channels, regi
       setLoading(false);
       return;
     }
+
     try {
-      const systemText = `You are PulseCart AI, an embedded analytics assistant for an Indian e-commerce retail intelligence dashboard.
-
-Dashboard context (live data):
-- GMV: ${fmtINR(kpis?.gmv ?? 0)}
-- AOV: ${fmtINR(kpis?.aov ?? 0)}
-- Conversion rate: ${kpis?.convRate?.toFixed(2) ?? "N/A"}%
-- Cart abandonment: ${kpis?.cartAbandRate?.toFixed(1) ?? "N/A"}%
-- Return rate: ${kpis?.returnRate?.toFixed(1) ?? "N/A"}%
-- Net revenue: ${fmtINR(kpis?.netRevenue ?? 0)}
-- Customer LTV: ${fmtINR(kpis?.ltv ?? 0)}
-- Inventory turnover: ${kpis?.invTurnover?.toFixed(1) ?? "N/A"}×
-- Top channel by ROAS: ${channels?.length ? [...channels].sort((a, b) => b.roas - a.roas)[0].ch : "N/A"}
-- Critical inventory SKUs: ${inventory?.filter(i => i.status === "critical").length ?? 0}
-
-Rules: Answer concisely using the live data above. Use INR formatting. Reference real benchmarks (Baymard, Redseer, CRISIL). Keep responses under 200 words. Do not hallucinate.`;
-
       const history = messages
         .filter(m => m.role !== "assistant" || !m.source)
         .slice(-6)
         .map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.text }] }));
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: systemText }] },
-            contents: [...history, { role: "user", parts: [{ text: q }] }],
-            generationConfig: { maxOutputTokens: 512, temperature: 0.4 },
-          }),
-        }
-      );
-      if (!res.ok) throw new Error(`Gemini API ${res.status}`);
-      const data   = await res.json();
-      const answer = data.candidates?.[0]?.content?.parts?.map(p => p.text).join("").trim() || "No response.";
-      setMessages(prev => [...prev, { role: "assistant", text: answer, ts: new Date(), source: "gemini" }]);
+      const res = await apiFetch('/api/ai/chat', {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: q,
+          history,
+          contextData: { kpis, channels, inventory }
+        }),
+      });
+
+      if (!res.ok) throw new Error(`API returned ${res.status}`);
+      const data = await res.json();
+      setMessages(prev => [...prev, { role: "assistant", text: data.answer || "No response.", ts: new Date(), source: "gemini" }]);
     } catch (err) {
       console.error("ChatBot Gemini error:", err);
       setMessages(prev => [...prev, {

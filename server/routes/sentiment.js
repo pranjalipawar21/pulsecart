@@ -92,17 +92,120 @@ Use real product knowledge. Do NOT generate generic/placeholder data.`;
     const raw = data.candidates?.[0]?.content?.parts?.map(p => p.text).join('').trim() || '{}';
     const cleaned = raw.replace(/```json|```/g, '').trim();
     const result = JSON.parse(cleaned);
-
-    res.json({
+    const finalData = {
       ...result,
       url,
       platform: productInfo.platform,
       identifier: productInfo.identifier,
       analyzedAt: new Date().toISOString(),
-    });
+    };
+
+    // Save to MySQL history if available
+    const { isAvailable, getPool } = require('../db');
+    if (isAvailable()) {
+      try {
+        await getPool().execute(
+          'INSERT INTO sentiment_history (url, platform, identifier, result_json) VALUES (?, ?, ?, ?)',
+          [url, productInfo.platform, productInfo.identifier, JSON.stringify(finalData)]
+        );
+      } catch (dbErr) {
+        console.warn('Failed to save sentiment history to DB:', dbErr.message);
+      }
+    }
+
+    res.json(finalData);
   } catch (err) {
     console.error('Sentiment analysis error:', err.message);
     res.status(500).json({ error: 'Sentiment analysis failed', detail: err.message });
+  }
+// ─── POST /api/sentiment/analyze-text ─────────────────────────────────────────
+// LLM Second pass for individual reviews
+router.post('/analyze-text', requireAuth, async (req, res) => {
+  const { text } = req.body;
+  if (!text || !text.trim()) return res.status(400).json({ error: 'Text required' });
+
+  const GEMINI_KEY = process.env.GEMINI_API_KEY;
+  if (!GEMINI_KEY) return res.status(503).json({ error: 'Gemini API key not configured on server' });
+
+  const prompt = `You are a sentiment analysis engine for Indian e-commerce product reviews.
+
+Analyse this review and respond ONLY with valid JSON (no markdown, no extra text):
+{
+  "sentiment": "positive" | "neutral" | "negative",
+  "score": <number -1.0 to 1.0>,
+  "confidence": <number 0.0 to 1.0>,
+  "aspects": [{ "aspect": "<aspect name>", "sentiment": "positive"|"neutral"|"negative", "phrase": "<supporting phrase>" }],
+  "summary": "<one sentence explanation>",
+  "recommended_action": "<brief CX/product action recommendation>"
+}
+
+Review: "${text.replace(/"/g, "'")}"`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 600, temperature: 0.1 },
+        }),
+      }
+    );
+    if (!response.ok) throw new Error(`Gemini API returned ${response.status}`);
+    const data = await response.json();
+    const raw = data.candidates?.[0]?.content?.parts?.map(p => p.text).join('').trim() || '{}';
+    const cleaned = raw.replace(/```json|```/g, '').trim();
+    res.json(JSON.parse(cleaned));
+  } catch (err) {
+    res.status(500).json({ error: 'Analysis failed', detail: err.message });
+  }
+});
+
+// ─── POST /api/sentiment/analyze-category ─────────────────────────────────────
+// Category-level insights
+router.post('/analyze-category', requireAuth, async (req, res) => {
+  const { category, stats } = req.body;
+  
+  const GEMINI_KEY = process.env.GEMINI_API_KEY;
+  if (!GEMINI_KEY) return res.status(503).json({ error: 'Gemini API key not configured on server' });
+
+  const prompt = `You are a category manager AI for an Indian e-commerce platform.
+
+Category: ${category}
+Sentiment Stats: ${JSON.stringify(stats)}
+
+Provide a strategic analysis. Respond ONLY with valid JSON (no markdown):
+{
+  "summary": "<2 sentence summary of overall sentiment>",
+  "strengths": ["<strength 1>", "<strength 2>", "<strength 3>"],
+  "weaknesses": ["<weakness 1>", "<weakness 2>", "<weakness 3>"],
+  "topConcern": "<single biggest customer pain point>",
+  "recommendation": "<specific actionable recommendation for the product/CX team>",
+  "npsEstimate": <number -100 to 100>,
+  "priority": "high" | "medium" | "low"
+}`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 800, temperature: 0.2 },
+        }),
+      }
+    );
+    if (!response.ok) throw new Error(`Gemini API returned ${response.status}`);
+    const data = await response.json();
+    const raw = data.candidates?.[0]?.content?.parts?.map(p => p.text).join('').trim() || '{}';
+    const cleaned = raw.replace(/```json|```/g, '').trim();
+    res.json(JSON.parse(cleaned));
+  } catch (err) {
+    res.status(500).json({ error: 'Category analysis failed', detail: err.message });
   }
 });
 

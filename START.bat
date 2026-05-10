@@ -1,7 +1,7 @@
 @echo off
 :: ─────────────────────────────────────────────────────────────────────────────
 :: PulseCart — START.bat
-:: Windows one-click launcher
+:: Windows one-click launcher — starts MySQL backend + React frontend
 :: Double-click this file to start the dev server
 :: ─────────────────────────────────────────────────────────────────────────────
 
@@ -17,6 +17,7 @@ echo  ██║     ╚██████╔╝███████╗███
 echo  ╚═╝      ╚═════╝ ╚══════╝╚══════╝╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝
 echo.
 echo  Retail Intelligence Dashboard v2.0
+echo  Full-Stack: React + Express + MySQL + Gemini AI
 echo  ─────────────────────────────────────────────────────────────────────────
 echo.
 
@@ -32,13 +33,17 @@ if %ERRORLEVEL% neq 0 (
   exit /b 1
 )
 
-:: ── Check npm is available ───────────────────────────────────────────────────
-where npm >nul 2>&1
+:: ── Check MySQL is running ───────────────────────────────────────────────────
+echo  Checking MySQL connection...
+mysql -u root -proot -e "SELECT 1" >nul 2>&1
 if %ERRORLEVEL% neq 0 (
-  echo  [ERROR] npm not found. Reinstall Node.js from https://nodejs.org
+  echo  [WARN] MySQL not reachable with root/root credentials.
+  echo         Make sure MySQL is running and credentials match server\.env
+  echo         The app will fall back to in-memory data if MySQL is unavailable.
   echo.
-  pause
-  exit /b 1
+) else (
+  echo  [OK] MySQL connected
+  echo.
 )
 
 :: ── Print versions ───────────────────────────────────────────────────────────
@@ -48,28 +53,9 @@ echo  npm version:
 npm --version
 echo.
 
-:: ── Check .env.local exists ──────────────────────────────────────────────────
-if not exist ".env.local" (
-  echo  [WARN] .env.local not found.
-  echo  Copying from .env.local.template...
-  if exist ".env.local.template" (
-    copy ".env.local.template" ".env.local" >nul
-    echo  Created .env.local — please fill in your Firebase config.
-    echo.
-    echo  Opening .env.local in Notepad...
-    start notepad ".env.local"
-    echo.
-    echo  Fill in your Firebase values, save the file, then press any key to continue.
-    pause
-  ) else (
-    echo  [WARN] .env.local.template also missing. App will use fallback config.
-    echo.
-  )
-)
-
-:: ── Install dependencies if node_modules missing ─────────────────────────────
+:: ── Install frontend dependencies if needed ──────────────────────────────────
 if not exist "node_modules\" (
-  echo  [INFO] node_modules not found — running npm install...
+  echo  [INFO] Frontend node_modules not found — running npm install...
   echo  This may take 1-3 minutes on first run.
   echo.
   npm install
@@ -80,16 +66,55 @@ if not exist "node_modules\" (
     exit /b 1
   )
   echo.
-  echo  [OK] Dependencies installed.
+  echo  [OK] Frontend dependencies installed.
   echo.
 )
 
-:: ── Start dev server ─────────────────────────────────────────────────────────
-echo  Starting PulseCart dev server...
-echo  App will open at http://localhost:3000
+:: ── Install backend dependencies if needed ───────────────────────────────────
+if not exist "server\node_modules\" (
+  echo  [INFO] Backend node_modules not found — running npm install...
+  echo.
+  pushd server
+  npm install
+  popd
+  if %ERRORLEVEL% neq 0 (
+    echo  [ERROR] Backend npm install failed.
+    pause
+    exit /b 1
+  )
+  echo  [OK] Backend dependencies installed.
+  echo.
+)
+
+:: ── Seed database if needed ──────────────────────────────────────────────────
+echo  Checking database...
+mysql -u root -proot -e "USE pulsecart; SELECT COUNT(*) FROM kpis;" >nul 2>&1
+if %ERRORLEVEL% neq 0 (
+  echo  [INFO] Database not seeded yet — running seed script...
+  pushd server
+  node seed.js
+  popd
+  echo.
+) else (
+  echo  [OK] Database 'pulsecart' already seeded
+  echo.
+)
+
+:: ── Start backend server in background ───────────────────────────────────────
+echo  Starting Express backend on port 5001...
+start /b "PulseCart-Backend" cmd /c "cd server && node index.js"
+timeout /t 2 /nobreak >nul
+
+:: ── Start frontend dev server ────────────────────────────────────────────────
+echo  Starting React frontend on port 3000...
 echo.
-echo  Press Ctrl+C to stop the server.
 echo  ─────────────────────────────────────────────────────────────────────────
+echo   App:     http://localhost:3000
+echo   API:     http://localhost:5001/api/health
+echo   MySQL:   pulsecart database
+echo  ─────────────────────────────────────────────────────────────────────────
+echo.
+echo  Press Ctrl+C to stop.
 echo.
 
 :: Open browser after 4 second delay
@@ -97,7 +122,7 @@ start /b cmd /c "timeout /t 4 /nobreak >nul && start http://localhost:3000"
 
 npm start
 
-:: ── If server exits ───────────────────────────────────────────────────────────
+:: ── If server exits ──────────────────────────────────────────────────────────
 echo.
 echo  [INFO] Server stopped.
 pause
