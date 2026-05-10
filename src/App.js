@@ -1,6 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { db, ref, onValue } from "./firebase";
-import { seedDatabase } from "./seedFirebase";
 import Sentiment from "./components/Sentiment";
 import TaxPage from "./components/TaxPage";
 import ChatBot from "./components/ChatBot";
@@ -231,39 +229,39 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
   const tickRef      = useRef(0);
   const btcChangeRef = useRef(0); // avoids stale closure in ticker interval
 
-  // ── Firebase ──────────────────────────────────────────────────────────────
+  // ── Dashboard Data API ────────────────────────────────────────────────────
   useEffect(() => {
-    seedDatabase();
-    onValue(ref(db, "dashboard/kpis"), snap => { if (snap.val()) setKpis(snap.val()); });
-    onValue(ref(db, "dashboard/gmvSeries"), snap => {
-      const data = snap.val();
-      if (data) {
-        const arr = Object.values(data).sort((a, b) => new Date("2024 " + a.date) - new Date("2024 " + b.date));
-        setGmvSeries(arr);
-      }
-    });
-    onValue(ref(db, "dashboard/live"), snap => {
-      const data = snap.val();
-      if (data) { setLiveGMV(data.gmv); setLiveOrders(data.orders); setLiveUsers(data.users); }
-    });
+    let mounted = true;
+    async function loadDashboard() {
+      try {
+        const kpiRes = await apiFetch("/api/dashboard/kpis");
+        if (!kpiRes.ok) throw new Error("API failed");
+        if (mounted) setKpis(await kpiRes.json());
 
-    // Fallback if Firebase fails to connect (e.g., missing API key on deployed site)
-    const fallbackTimer = setTimeout(() => {
-      setKpis(prev => {
-        if (!prev) {
-          console.warn("Firebase not connected. Falling back to local mock data.");
-          return genKPIs();
+        const gmvRes = await apiFetch("/api/dashboard/gmvSeries");
+        if (mounted) setGmvSeries(await gmvRes.json());
+
+        const liveRes = await apiFetch("/api/dashboard/live");
+        if (mounted) {
+          const liveData = await liveRes.json();
+          setLiveGMV(liveData.gmv);
+          setLiveOrders(liveData.orders);
+          setLiveUsers(liveData.users);
         }
-        return prev;
-      });
-      setGmvSeries(prev => {
-        if (!prev || prev.length === 0) return genGMVSeries();
-        return prev;
-      });
-    }, 1500);
+      } catch (e) {
+        if (mounted) {
+          // Fallback for live demo without backend
+          console.warn("Backend unavailable. Using local mock data for dashboard.");
+          setKpis(genKPIs());
+          setGmvSeries(genGMVSeries());
+        }
+      }
+    }
 
-    return () => clearTimeout(fallbackTimer);
-  }, []);
+    loadDashboard();
+    const iv = setInterval(loadDashboard, 15000); // Poll backend every 15s
+    return () => { mounted = false; clearInterval(iv); };
+  }, [apiFetch]);
 
  useEffect(() => {
   async function loadRealData() {
