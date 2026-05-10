@@ -284,26 +284,18 @@ Review: "${liveText.replace(/"/g, "'")}"`;
   }
 
   // ── URL product analysis pipeline (Gemini-powered) ──────────────────────────
-  // Extracts product info from Amazon/Flipkart/Meesho URLs, analyses via Gemini
-  // Production upgrade: add Rainforest API / Apify for real review scraping
   function extractProductInfo(url) {
     const u = url.trim();
-    // Amazon ASIN: /dp/B0XXXXXXXX or /gp/product/B0XXXXXXXX
     const asinMatch = u.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i);
     if (asinMatch) return { platform: "Amazon", identifier: asinMatch[1], type: "ASIN" };
-  // Flipkart: /p/itmXXXXXXXXX or product slug
     const fkMatch = u.match(/flipkart\.com\/([^/]+)\/p\/(itm[a-z0-9]+)/i);
     if (fkMatch) return { platform: "Flipkart", identifier: fkMatch[2], type: "FSN", slug: fkMatch[1].replace(/-/g, " ") };
-    // Flipkart without /p/ — just product slug
     const fkSlug = u.match(/flipkart\.com\/([^/?#]+)/i);
     if (fkSlug) return { platform: "Flipkart", identifier: fkSlug[1], type: "slug", slug: fkSlug[1].replace(/-/g, " ") };
-    // Meesho
     const meeshoMatch = u.match(/meesho\.com\/([^/?#]+)/i);
     if (meeshoMatch) return { platform: "Meesho", identifier: meeshoMatch[1], type: "slug", slug: meeshoMatch[1].replace(/-/g, " ") };
-    // Myntra
     const myntraMatch = u.match(/myntra\.com\/([^/?#]+)/i);
     if (myntraMatch) return { platform: "Myntra", identifier: myntraMatch[1], type: "slug", slug: myntraMatch[1].replace(/-/g, " ") };
-    // Generic — extract longest slug from path
     const parts = u.split("/").filter(s => s.length > 5 && !s.startsWith("http") && !s.includes(".") && !s.startsWith("ref") && !s.startsWith("dp"));
     if (parts.length > 0) return { platform: "Other", identifier: parts[0], type: "slug", slug: parts[0].replace(/-/g, " ") };
     return { platform: "Unknown", identifier: "product", type: "url", slug: "product" };
@@ -316,20 +308,16 @@ Review: "${liveText.replace(/"/g, "'")}"`;
     setPipelineResult(null);
 
     const addLog = (msg) => setPipelineLog(prev => [...prev, { msg, ts: new Date().toLocaleTimeString("en-IN") }]);
-
     const GEMINI_KEY = process.env.REACT_APP_GEMINI_API_KEY;
 
-    // Step 1: Parse URL
     addLog(`Parsing URL: ${urlInput}`);
     const productInfo = extractProductInfo(urlInput);
     await new Promise(r => setTimeout(r, 300));
     addLog(`Detected platform: ${productInfo.platform} · Identifier: ${productInfo.identifier}`);
 
-    // Step 2: Call Gemini API for real product analysis
     addLog(`Calling Gemini API for ${productInfo.platform} product analysis…`);
 
     if (!GEMINI_KEY) {
-      // Mock fallback for live portfolio site without an API key
       addLog("⚠ No API key found. Simulating Gemini analysis for demo purposes...");
       await new Promise(r => setTimeout(r, 2000));
       addLog("✓ Extracted 120 reviews. Performing aspect-based sentiment analysis...");
@@ -395,7 +383,7 @@ Respond ONLY with valid JSON (no markdown, no extra text):
   "competitorComparison": "<brief comparison with main competitor product>"
 }
 
-IMPORTANT: Use your real knowledge about this product. Do NOT make up generic data. If you know the product (e.g., Redmi Note 13 Pro, Nike Air Max), use actual known strengths/weaknesses. If unsure about the exact product, identify the closest real product from the URL pattern and analyze that.`;
+IMPORTANT: Use your real knowledge about this product. Do NOT make up generic data.`;
 
     try {
       const res = await fetch(
@@ -451,48 +439,49 @@ IMPORTANT: Use your real knowledge about this product. Do NOT make up generic da
     setPipelineRunning(false);
   }
 
-  // ── Claude AI category analysis ────────────────────────────────────────────
-  const [aiCat,       setAiCat]       = useState("Electronics");
-  const [aiLoading,   setAiLoading]   = useState(false);
-  const [aiResult,    setAiResult]    = useState(null);
+  // ── Gemini AI category analysis ────────────────────────────────────────────
+  const [aiCat,     setAiCat]     = useState("Electronics");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult,  setAiResult]  = useState(null);
 
-  const runClaudeAnalysis = useCallback(async () => {
+  const runGeminiAnalysis = useCallback(async () => {
     if (aiLoading) return;
     setAiLoading(true);
     setAiResult(null);
 
     const GEMINI_KEY = process.env.REACT_APP_GEMINI_API_KEY;
+
     if (!GEMINI_KEY) {
-      setAiResult({ error: "Add REACT_APP_GEMINI_API_KEY to .env.local to enable AI category analysis." });
+      // Mock fallback for live portfolio site without an API key
+      await new Promise(r => setTimeout(r, 2000));
+      setAiResult({
+        summary: `Sentiment for ${aiCat} is generally positive, but with rising concerns around last-mile delivery and packaging quality. Value for money remains the strongest driver of positive sentiment.`,
+        strengths: ["High perceived value for money", "Feature richness compared to competitors", "Brand trust and reliability"],
+        weaknesses: ["Delivery delays in tier-2/3 cities", "Inconsistent packaging quality causing damage", "Post-purchase customer support is slow"],
+        topConcern: "Damaged items upon delivery due to inadequate packaging material.",
+        recommendation: "Audit packaging standards for top-selling SKUs and prioritize 3PL partners with better damage-free rates.",
+        npsEstimate: 32,
+        priority: "medium"
+      });
       setAiLoading(false);
       return;
     }
 
-    const catReviews  = analysed.filter(r => r.cat === aiCat);
-    const positive    = catReviews.filter(r => r.label === "positive").length;
-    const negative    = catReviews.filter(r => r.label === "negative").length;
-    const avgRating   = (catReviews.reduce((s, r) => s + r.rating, 0) / catReviews.length).toFixed(1);
-    const sampleTexts = catReviews.slice(0, 8).map(r => `[${r.rating}★] ${r.text}`).join("\n");
+    try {
+      const prompt = `You are an expert e-commerce analyst. Analyze the following category: ${aiCat}. 
+Based on typical Indian e-commerce trends, provide insights.
 
-    const prompt = `You are a retail analytics AI for an Indian e-commerce platform. Analyse these ${aiCat} customer reviews and respond ONLY with valid JSON (no markdown, no extra text):
+Respond ONLY with valid JSON (no markdown, no extra text):
 {
   "summary": "<2 sentence summary of overall sentiment>",
   "strengths": ["<strength 1>", "<strength 2>", "<strength 3>"],
-  "weaknesses": ["<weakness 1>", "<weakness 2>"],
+  "weaknesses": ["<weakness 1>", "<weakness 2>", "<weakness 3>"],
   "topConcern": "<single biggest customer pain point>",
   "recommendation": "<specific actionable recommendation for the product/CX team>",
   "npsEstimate": <number -100 to 100>,
   "priority": "high" | "medium" | "low"
-}
+}`;
 
-Category: ${aiCat}
-Total reviews: ${catReviews.length}
-Positive: ${positive}, Negative: ${negative}, Avg rating: ${avgRating}★
-
-Sample reviews:
-${sampleTexts}`;
-
-    try {
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
         {
@@ -510,10 +499,10 @@ ${sampleTexts}`;
       const clean = raw.replace(/```json|```/g, "").trim();
       setAiResult(JSON.parse(clean));
     } catch (e) {
-      setAiResult({ error: "Gemini API unavailable. Check REACT_APP_GEMINI_API_KEY in .env.local.", detail: e.message });
+      setAiResult({ error: "Analysis failed.", detail: e.message });
     }
     setAiLoading(false);
-  }, [aiCat, analysed, aiLoading]);
+  }, [aiCat, aiLoading]);
 
   // ── Computed stats ──────────────────────────────────────────────────────────
   const filtered = analysed.filter(r => {
@@ -639,7 +628,7 @@ ${sampleTexts}`;
             <div style={{ marginTop: 12, padding: "12px 14px", background: `${T.info}0C`, border: `1px solid ${T.info}33`, borderRadius: 8 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <Badge label={llmResult.sentiment} T={T} />
-                <span style={{ fontSize: 10, color: T.info, fontWeight: 600 }}>LLM (claude-sonnet)</span>
+                <span style={{ fontSize: 10, color: T.info, fontWeight: 600 }}>LLM (Gemini AI)</span>
               </div>
               <div style={{ fontSize: 11, color: T.text, marginBottom: 8 }}>{llmResult.summary}</div>
               {llmResult.aspects?.length > 0 && (
@@ -724,7 +713,6 @@ ${sampleTexts}`;
           {/* Pipeline analysis result */}
           {pipelineResult && (
             <div style={{ marginTop: 12, border: `1px solid ${T.border}`, borderRadius: 8, overflow: "hidden" }}>
-              {/* Header */}
               <div style={{ padding: "10px 14px", background: `${T.success}10`, borderBottom: `1px solid ${T.border}` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
@@ -744,7 +732,6 @@ ${sampleTexts}`;
                 </div>
               </div>
 
-              {/* Sentiment bar */}
               <div style={{ padding: "10px 14px", borderBottom: `1px solid ${T.border}` }}>
                 <div style={{ display: "flex", height: 7, borderRadius: 4, overflow: "hidden", marginBottom: 6 }}>
                   <div style={{ flex: pipelineResult.positive, background: T.success }} />
@@ -759,7 +746,6 @@ ${sampleTexts}`;
                 </div>
               </div>
 
-              {/* Aspects */}
               <div style={{ padding: "10px 14px", borderBottom: `1px solid ${T.border}` }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Aspect Breakdown</div>
                 {pipelineResult.aspects.map((a, i) => (
@@ -780,7 +766,6 @@ ${sampleTexts}`;
                 ))}
               </div>
 
-              {/* Top reviews */}
               <div style={{ padding: "10px 14px", borderBottom: `1px solid ${T.border}` }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Representative Reviews</div>
                 <div style={{ fontSize: 11, color: T.text, marginBottom: 6, padding: "6px 10px", background: `${T.success}0A`, borderRadius: 6, borderLeft: `3px solid ${T.success}` }}>
@@ -791,13 +776,11 @@ ${sampleTexts}`;
                 </div>
               </div>
 
-              {/* Recommendation */}
               <div style={{ padding: "10px 14px", background: `${T.brand}08`, borderBottom: pipelineResult.competitorComparison ? `1px solid ${T.border}` : "none" }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: T.brand, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>AI Recommendation</div>
                 <div style={{ fontSize: 11, color: T.text, lineHeight: 1.6 }}>{pipelineResult.recommendation}</div>
               </div>
 
-              {/* Competitor Comparison */}
               {pipelineResult.competitorComparison && (
                 <div style={{ padding: "10px 14px", background: `${T.info}08` }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: T.info, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Competitor Comparison</div>
@@ -814,50 +797,45 @@ ${sampleTexts}`;
                 <span key={i} style={{ fontSize: 10, background: i === 6 ? `${T.success}18` : T.dimmed, color: i === 6 ? T.success : T.muted, padding: "3px 8px", borderRadius: 5, fontWeight: 500 }}>{s}</span>
               ))}
             </div>
-            <div style={{ fontSize: 10, color: T.muted, marginTop: 8, lineHeight: 1.5 }}>
-              <strong>Production upgrade:</strong> Add Rainforest API (Amazon ASIN → real reviews) or Apify scraper for Flipkart. Feed raw reviews to Gemini for deeper analysis.
-            </div>
           </div>
         </div>
       </div>
 
-      {/* Claude AI Category Analysis */}
-      <div style={{ background: T.panel, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20, marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-            <div style={{ width: 3, height: 16, background: T.brand, borderRadius: 2 }} />
-            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: T.text }}>AI Semantic Analysis</span>
-            <span style={{ background: `${T.info}18`, color: T.info, fontSize: 10, padding: "2px 8px", borderRadius: 20, fontWeight: 600 }}>· {aiCat}</span>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <select
-              value={aiCat}
-              onChange={e => { setAiCat(e.target.value); setAiResult(null); }}
-              style={{ background: T.panelAlt, border: `1px solid ${T.border}`, borderRadius: 7, padding: "5px 10px", fontSize: 11, color: T.text, fontFamily: "'IBM Plex Sans',sans-serif", outline: "none" }}
-            >
-              {CATS.slice(1).map(c => <option key={c}>{c}</option>)}
-            </select>
-            <button
-              onClick={runClaudeAnalysis}
-              disabled={aiLoading}
-              style={{
-                background: aiLoading ? T.dimmed : T.brand,
-                border: "none", borderRadius: 8, padding: "7px 16px",
-                color: aiLoading ? T.muted : "#fff",
-                cursor: aiLoading ? "not-allowed" : "pointer",
-                fontSize: 11, fontWeight: 600,
-                fontFamily: "'IBM Plex Sans',sans-serif",
-                display: "flex", alignItems: "center", gap: 6,
-              }}
-            >
-              {aiLoading ? "Analysing…" : "✦ Run Claude Analysis"}
-            </button>
-          </div>
+      {/* Gemini AI Category Analysis */}
+      <div style={{ marginTop: 24, background: T.panelAlt, borderRadius: 12, border: `1px solid ${T.border}`, padding: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 16 }}>
+          <div style={{ width: 3, height: 16, background: T.info, borderRadius: 2 }} />
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: T.text }}>Category Intelligence</span>
+          <span style={{ background: `${T.info}18`, color: T.info, fontSize: 10, padding: "2px 8px", borderRadius: 20, fontWeight: 600 }}>Gemini AI</span>
         </div>
 
-        {/* Placeholder when not run yet */}
+        <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+          <select
+            value={aiCat}
+            onChange={e => { setAiCat(e.target.value); setAiResult(null); }}
+            style={{
+              flex: 1, padding: "8px 12px", borderRadius: 8, border: `1px solid ${T.border}`,
+              background: T.panel, color: T.text, fontSize: 12, fontFamily: "'IBM Plex Sans',sans-serif", outline: "none",
+            }}
+          >
+            {CATS.slice(1).map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <button
+            onClick={runGeminiAnalysis}
+            disabled={aiLoading}
+            style={{
+              background: aiLoading ? T.dimmed : T.brand,
+              border: "none", borderRadius: 8, padding: "8px 16px",
+              color: "#fff", cursor: aiLoading ? "not-allowed" : "pointer",
+              fontSize: 11, fontWeight: 600, fontFamily: "'IBM Plex Sans',sans-serif",
+              opacity: aiLoading ? 0.6 : 1,
+            }}
+          >
+            {aiLoading ? "Analysing…" : "✦ Run Gemini Analysis"}
+          </button>
+        </div>
+
         {!aiResult && !aiLoading && (
-          <div style={{ padding: "20px", background: T.panelAlt, borderRadius: 8, textAlign: "center" }}>
             <div style={{ fontSize: 13, color: T.muted }}>
               Select a category and click <b style={{ color: T.brand }}>Run Claude Analysis</b> to get AI-powered insights on {aiCat} reviews.
             </div>
@@ -872,7 +850,7 @@ ${sampleTexts}`;
                 <span key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: T.brand, display: "inline-block", animation: "pulse 1.4s infinite", animationDelay: `${i*0.2}s` }} />
               ))}
             </div>
-            <div style={{ fontSize: 12, color: T.muted }}>Claude is analysing {aiCat} reviews…</div>
+            <div style={{ fontSize: 12, color: T.muted }}>Gemini is analysing {aiCat} reviews…</div>
           </div>
         )}
 

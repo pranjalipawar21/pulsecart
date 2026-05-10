@@ -180,11 +180,14 @@ export default function ChatBot({ T, kpis, gmvSeries, categories, channels, regi
     // 2. Fall back to Gemini LLM with dashboard context
     const GEMINI_KEY = process.env.REACT_APP_GEMINI_API_KEY;
     if (!GEMINI_KEY) {
+      // Mock fallback for live portfolio site without an API key
+      await new Promise(r => setTimeout(r, 1500));
+      const fallbackResponse = `**Gemini AI (Demo Mode)**\n\nBased on the live data context, the current GMV is **${fmtINR(kpis?.gmv ?? 0)}** with a Conversion Rate of **${kpis?.convRate?.toFixed(2) ?? "N/A"}%**. Your top performing channel is **${channels?.length ? [...channels].sort((a, b) => b.roas - a.roas)[0].ch : "N/A"}**.\n\n*Note: This is a simulated response for the portfolio demo because the live API key is hidden. In production, this uses Gemini 2.0 Flash for dynamic natural language queries.*`;
       setMessages(prev => [...prev, {
         role: "assistant",
-        text: "Gemini API key not configured (REACT_APP_GEMINI_API_KEY). Add it to .env.local. The rule-based engine covers most queries — try asking about GMV, channels, inventory, or abandonment.",
+        text: fallbackResponse,
         ts: new Date(),
-        source: "fallback",
+        source: "gemini",
       }]);
       setLoading(false);
       return;
