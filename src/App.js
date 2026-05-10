@@ -70,12 +70,21 @@ const THEMES = {
 };
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
-const fmtINR = (n) =>
-  n >= 1e7 ? `₹${(n / 1e7).toFixed(2)}Cr` :
-  n >= 1e5 ? `₹${(n / 1e5).toFixed(1)}L`  :
-  n >= 1e3 ? `₹${(n / 1e3).toFixed(1)}K`  : `₹${Math.round(n)}`;
-const pct  = (n) => `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
-const fNum = (n) => n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : String(Math.round(n));
+const fmtINR = (n) => {
+  const val = n ?? 0;
+  return val >= 1e7 ? `₹${(val / 1e7).toFixed(2)}Cr` :
+         val >= 1e5 ? `₹${(val / 1e5).toFixed(1)}L`  :
+         val >= 1e3 ? `₹${(val / 1e3).toFixed(1)}K`  : `₹${Math.round(val)}`;
+};
+const pct  = (n) => {
+  const val = n ?? 0;
+  return `${val >= 0 ? "+" : ""}${val.toFixed(1)}%`;
+};
+const fNum = (n) => {
+  const val = n ?? 0;
+  return val >= 1e6 ? `${(val / 1e6).toFixed(1)}M` : 
+         val >= 1e3 ? `${(val / 1e3).toFixed(1)}K` : String(Math.round(val));
+};
 
 // ─── Tooltip ──────────────────────────────────────────────────────────────────
 function ChartTip({ active, payload, label, T }) {
@@ -110,7 +119,7 @@ function KPICard({ label, value, delta, sub, color, icon, T }) {
       <div style={{ fontSize: 24, fontWeight: 700, color: T.text, lineHeight: 1, marginBottom: 8, fontFamily: "'IBM Plex Sans',sans-serif", letterSpacing: "-0.02em" }}>{value}</div>
       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
         <span style={{ fontSize: 10, fontWeight: 700, color: up ? T.success : T.danger, background: up ? `${T.success}14` : `${T.danger}14`, padding: "2px 7px", borderRadius: 20 }}>
-          {up ? "▲" : "▼"} {Math.abs(delta).toFixed(1)}%
+          {up ? "▲" : "▼"} {(Math.abs(delta) || 0).toFixed(1)}%
         </span>
         <span style={{ fontSize: 10, color: T.muted }}>{sub}</span>
       </div>
@@ -236,30 +245,40 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
       try {
         const kpiRes = await apiFetch("/api/dashboard/kpis");
         if (!kpiRes.ok) throw new Error("API failed");
-        if (mounted) setKpis(await kpiRes.json());
+        const kpiData = await kpiRes.json();
+        // Validate kpiData structure
+        if (mounted && kpiData && typeof kpiData.gmv === "number") {
+          setKpis(kpiData);
+        } else {
+          throw new Error("Invalid KPI data");
+        }
 
         const gmvRes = await apiFetch("/api/dashboard/gmvSeries");
-        if (mounted) setGmvSeries(await gmvRes.json());
+        if (gmvRes.ok) {
+          const gmvData = await gmvRes.json();
+          if (mounted && Array.isArray(gmvData)) setGmvSeries(gmvData);
+        }
 
         const liveRes = await apiFetch("/api/dashboard/live");
-        if (mounted) {
+        if (liveRes.ok) {
           const liveData = await liveRes.json();
-          setLiveGMV(liveData.gmv);
-          setLiveOrders(liveData.orders);
-          setLiveUsers(liveData.users);
+          if (mounted && liveData) {
+            setLiveGMV(liveData.gmv ?? 0);
+            setLiveOrders(liveData.orders ?? 0);
+            setLiveUsers(liveData.users ?? 0);
+          }
         }
       } catch (e) {
         if (mounted) {
-          // Fallback for live demo without backend
-          console.warn("Backend unavailable. Using local mock data for dashboard.");
-          setKpis(genKPIs());
-          setGmvSeries(genGMVSeries());
+          console.warn("Dashboard sync failed. Using local mock data.", e.message);
+          setKpis(prev => prev || genKPIs());
+          setGmvSeries(prev => (prev?.length > 0 ? prev : genGMVSeries()));
         }
       }
     }
 
     loadDashboard();
-    const iv = setInterval(loadDashboard, 15000); // Poll backend every 15s
+    const iv = setInterval(loadDashboard, 20000); // Polling backend
     return () => { mounted = false; clearInterval(iv); };
   }, [apiFetch]);
 
@@ -467,17 +486,17 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
                 <div style={{ display: "flex", gap: 14, marginTop: 5, fontSize: 11, color: T.muted, flexWrap: "wrap" }}>
                   <span>
                     <span style={{ color: apiReady.forex ? T.success : T.muted, marginRight: 4 }}>{apiReady.forex ? "●" : "○"}</span>
-                    USD/INR ₹{forex.rate.toFixed(2)}
+                    USD/INR ₹{(forex?.rate ?? 83.5).toFixed(2)}
                     {!apiReady.forex && <span style={{ fontSize: 9, color: T.muted }}> (fallback)</span>}
                   </span>
                   <span>
                     <span style={{ color: apiReady.macro ? T.success : T.muted, marginRight: 4 }}>{apiReady.macro ? "●" : "○"}</span>
-                    India GDP {macro.gdpGrowth.toFixed(1)}% ({macro.gdpYear})
+                    India GDP {(macro?.gdpGrowth ?? 6.5).toFixed(1)}% ({macro?.gdpYear ?? "2024"})
                     {!apiReady.macro && <span style={{ fontSize: 9, color: T.muted }}> (fallback)</span>}
                   </span>
                   <span>
                     <span style={{ color: apiReady.crypto ? T.success : T.muted, marginRight: 4 }}>{apiReady.crypto ? "●" : "○"}</span>
-                    BTC ${Math.round(crypto.btc).toLocaleString()} ({crypto.btcChange >= 0 ? "+" : ""}{(crypto.btcChange ?? 0).toFixed(1)}% 24h)
+                    BTC ${Math.round(crypto?.btc ?? 0).toLocaleString()} ({crypto?.btcChange >= 0 ? "+" : ""}{(crypto?.btcChange ?? 0).toFixed(1)}% 24h)
                     {!apiReady.crypto && <span style={{ fontSize: 9, color: T.muted }}> (fallback)</span>}
                   </span>
                 </div>
@@ -514,14 +533,14 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
 
             {/* KPI Grid */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 22 }}>
-              <KPICard label="GMV"              value={fmtINR(kpis.gmv)}                    delta={3.8}  sub={`last ${dateRange}d`}       color={T.brand}    icon="₹" T={T} />
-              <KPICard label="Avg Order Value"  value={fmtINR(kpis.aov)}                    delta={1.2}  sub="per order"                   color={T.success}  icon="↗" T={T} />
-              <KPICard label="Conversion Rate"  value={`${kpis.convRate.toFixed(2)}%`}      delta={0.4}  sub="sessions → orders"            color={T.info}     icon="%" T={T} />
-              <KPICard label="Cart Abandonment" value={`${kpis.cartAbandRate.toFixed(1)}%`} delta={-1.1} sub="Baymard avg 70.2%"           color={T.danger}   icon="↩" T={T} />
-              <KPICard label="Net Revenue"      value={fmtINR(kpis.netRevenue)}             delta={2.9}  sub="after returns + COGS"         color={T.brandAlt} icon="₹" T={T} />
-              <KPICard label="Return Rate"      value={`${kpis.returnRate.toFixed(1)}%`}    delta={-0.6} sub="Redseer India 2024"           color={T.danger}   icon="↩" T={T} />
-              <KPICard label="Customer LTV"     value={fmtINR(kpis.ltv)}                    delta={4.1}  sub="avg per customer"             color={T.success}  icon="♾" T={T} />
-              <KPICard label="Inventory Turns"  value={`${kpis.invTurnover.toFixed(1)}x`}  delta={0.3}  sub="CRISIL benchmark"             color={T.info}     icon="↺" T={T} />
+              <KPICard label="GMV"              value={fmtINR(kpis?.gmv ?? 0)}               delta={3.8}  sub={`last ${dateRange}d`}       color={T.brand}    icon="₹" T={T} />
+              <KPICard label="Avg Order Value"  value={fmtINR(kpis?.aov ?? 0)}               delta={1.2}  sub="per order"                   color={T.success}  icon="↗" T={T} />
+              <KPICard label="Conversion Rate"  value={`${(kpis?.convRate ?? 0).toFixed(2)}%`}      delta={0.4}  sub="sessions → orders"            color={T.info}     icon="%" T={T} />
+              <KPICard label="Cart Abandonment" value={`${(kpis?.cartAbandRate ?? 0).toFixed(1)}%`} delta={-1.1} sub="Baymard avg 70.2%"           color={T.danger}   icon="↩" T={T} />
+              <KPICard label="Net Revenue"      value={fmtINR(kpis?.netRevenue ?? 0)}        delta={2.9}  sub="after returns + COGS"         color={T.brandAlt} icon="₹" T={T} />
+              <KPICard label="Return Rate"      value={`${(kpis?.returnRate ?? 0).toFixed(1)}%`}    delta={-0.6} sub="Redseer India 2024"           color={T.danger}   icon="↩" T={T} />
+              <KPICard label="Customer LTV"     value={fmtINR(kpis?.ltv ?? 0)}               delta={4.1}  sub="avg per customer"             color={T.success}  icon="♾" T={T} />
+              <KPICard label="Inventory Turns"  value={`${(kpis?.invTurnover ?? 0).toFixed(1)}x`}  delta={0.3}  sub="CRISIL benchmark"             color={T.info}     icon="↺" T={T} />
             </div>
 
             {/* GMV Chart + Activity */}

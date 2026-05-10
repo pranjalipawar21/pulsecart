@@ -60,7 +60,7 @@ class ErrorBoundary extends React.Component {
             PulseCart hit an error
           </div>
           <div style={{ fontSize: 13, color: T.muted, lineHeight: 1.7, marginBottom: 24 }}>
-            An unexpected error occurred. This is usually caused by a Firebase connectivity issue or a stale cache. Try refreshing the page.
+            An unexpected error occurred. This is usually caused by an API connectivity issue or a stale cache. Try refreshing the page.
           </div>
 
           {/* Error detail */}
