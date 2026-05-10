@@ -836,8 +836,9 @@ Respond ONLY with valid JSON (no markdown, no extra text):
         </div>
 
         {!aiResult && !aiLoading && (
+          <div style={{ padding: "20px", background: T.panelAlt, borderRadius: 8, textAlign: "center" }}>
             <div style={{ fontSize: 13, color: T.muted }}>
-              Select a category and click <b style={{ color: T.brand }}>Run Claude Analysis</b> to get AI-powered insights on {aiCat} reviews.
+              Select a category and click <b style={{ color: T.brand }}>Run Gemini Analysis</b> to get AI-powered insights on {aiCat} reviews.
             </div>
           </div>
         )}
