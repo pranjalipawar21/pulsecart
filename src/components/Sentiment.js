@@ -291,7 +291,7 @@ Review: "${liveText.replace(/"/g, "'")}"`;
     // Amazon ASIN: /dp/B0XXXXXXXX or /gp/product/B0XXXXXXXX
     const asinMatch = u.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i);
     if (asinMatch) return { platform: "Amazon", identifier: asinMatch[1], type: "ASIN" };
-    // Flipkart: /p/itmXXXXXXXXX or product slug
+  // Flipkart: /p/itmXXXXXXXXX or product slug
     const fkMatch = u.match(/flipkart\.com\/([^/]+)\/p\/(itm[a-z0-9]+)/i);
     if (fkMatch) return { platform: "Flipkart", identifier: fkMatch[2], type: "FSN", slug: fkMatch[1].replace(/-/g, " ") };
     // Flipkart without /p/ — just product slug
@@ -318,11 +318,6 @@ Review: "${liveText.replace(/"/g, "'")}"`;
     const addLog = (msg) => setPipelineLog(prev => [...prev, { msg, ts: new Date().toLocaleTimeString("en-IN") }]);
 
     const GEMINI_KEY = process.env.REACT_APP_GEMINI_API_KEY;
-    if (!GEMINI_KEY) {
-      addLog("✗ Error: Add REACT_APP_GEMINI_API_KEY to .env.local to enable URL analysis.");
-      setPipelineRunning(false);
-      return;
-    }
 
     // Step 1: Parse URL
     addLog(`Parsing URL: ${urlInput}`);
@@ -333,13 +328,51 @@ Review: "${liveText.replace(/"/g, "'")}"`;
     // Step 2: Call Gemini API for real product analysis
     addLog(`Calling Gemini API for ${productInfo.platform} product analysis…`);
 
+    if (!GEMINI_KEY) {
+      // Mock fallback for live portfolio site without an API key
+      addLog("⚠ No API key found. Simulating Gemini analysis for demo purposes...");
+      await new Promise(r => setTimeout(r, 2000));
+      addLog("✓ Extracted 120 reviews. Performing aspect-based sentiment analysis...");
+      await new Promise(r => setTimeout(r, 1500));
+      addLog("✓ Complete! Generating product summary...");
+      
+      const pName = productInfo.slug ? productInfo.slug.replace(/\b\w/g, c => c.toUpperCase()) : "Smart Earbuds";
+      const mockResult = {
+        product: `Philips ${pName} - In-Ear Bluetooth TWS`,
+        brand: "Philips",
+        category: "Audio",
+        priceRange: "₹1,200 - ₹1,500",
+        total: 120,
+        positive: 85,
+        neutral: 20,
+        negative: 15,
+        avgRating: 4.2,
+        avgScore: 0.65,
+        aspects: [
+          { aspect: "Sound Quality", sentiment: "positive", count: 45, phrase: "good bass, clear vocals" },
+          { aspect: "Battery Life", sentiment: "positive", count: 30, phrase: "lasts over 30 hours easily" },
+          { aspect: "Build Quality", sentiment: "neutral", count: 25, phrase: "feels a bit plasticky" },
+          { aspect: "Connectivity", sentiment: "negative", count: 12, phrase: "bluetooth drops occasionally" }
+        ],
+        topPositive: "Excellent sound for the price. The bass is punchy and battery lasts forever.",
+        topNegative: "Left earbud stopped pairing after 2 weeks. Plastic quality is cheap.",
+        recommendation: "Recommended for budget buyers looking for battery life and brand reliability, but warn users about occasional pairing issues.",
+        competitorComparison: "Better battery than boAt Airdopes 141, but build quality feels less premium compared to Realme Buds."
+      };
+      
+      setPipelineResult(mockResult);
+      addLog(`✓ Analysis finished in 3.5s`);
+      setPipelineRunning(false);
+      return;
+    }
+
     const prompt = `You are a product review sentiment analysis engine for Indian e-commerce.
 
 I have a product URL from ${productInfo.platform}: ${urlInput}
 Product identifier: ${productInfo.identifier}
 ${productInfo.slug ? `Product slug: ${productInfo.slug}` : ""}
 
-Based on your knowledge of this actual product (or the closest matching real product if the exact one is unclear), analyze what real customer reviews typically say about it.
+Based on your knowledge of this actual product, analyze what real customer reviews typically say about it.
 
 Respond ONLY with valid JSON (no markdown, no extra text):
 {
