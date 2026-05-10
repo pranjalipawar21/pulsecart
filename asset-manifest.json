@@ -1,10 +1,10 @@
 {
   "files": {
-    "main.js": "/pulsecart/static/js/main.dfdc520f.js",
+    "main.js": "/pulsecart/static/js/main.e6b4eef2.js",
     "index.html": "/pulsecart/index.html",
-    "main.dfdc520f.js.map": "/pulsecart/static/js/main.dfdc520f.js.map"
+    "main.e6b4eef2.js.map": "/pulsecart/static/js/main.e6b4eef2.js.map"
   },
   "entrypoints": [
-    "static/js/main.dfdc520f.js"
+    "static/js/main.e6b4eef2.js"
   ]
 }
