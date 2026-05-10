@@ -11,18 +11,33 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => localStorage.getItem("pc_token") || null);
 
   const login = useCallback(async (username, password) => {
-    const res = await fetch(`${API}/api/auth/login`, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ username, password }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Login failed");
-    localStorage.setItem("pc_token", data.token);
-    localStorage.setItem("pc_user",  JSON.stringify(data.user));
-    setToken(data.token);
-    setUser(data.user);
-    return data.user;
+    try {
+      const res = await fetch(`${API}/api/auth/login`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Login failed");
+      localStorage.setItem("pc_token", data.token);
+      localStorage.setItem("pc_user",  JSON.stringify(data.user));
+      setToken(data.token);
+      setUser(data.user);
+      return data.user;
+    } catch (err) {
+      // Fallback for live demo without backend
+      if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
+        console.warn("Backend unavailable. Simulating login for demo purposes.");
+        const mockUser = { id: 1, username, role: username === "owner" ? "owner" : "staff", full_name: "Demo User" };
+        const mockToken = "mock_token_demo_123";
+        localStorage.setItem("pc_token", mockToken);
+        localStorage.setItem("pc_user", JSON.stringify(mockUser));
+        setToken(mockToken);
+        setUser(mockUser);
+        return mockUser;
+      }
+      throw err;
+    }
   }, []);
 
   const logout = useCallback(() => {
@@ -34,16 +49,24 @@ export function AuthProvider({ children }) {
 
   /** Fetch wrapper that injects the Bearer token */
   const apiFetch = useCallback(async (path, opts = {}) => {
-    const res = await fetch(`${API}${path}`, {
-      ...opts,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization:  token ? `Bearer ${token}` : "",
-        ...opts.headers,
-      },
-    });
-    if (res.status === 401) { logout(); throw new Error("Session expired"); }
-    return res;
+    try {
+      const res = await fetch(`${API}${path}`, {
+        ...opts,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization:  token ? `Bearer ${token}` : "",
+          ...opts.headers,
+        },
+      });
+      if (res.status === 401) { logout(); throw new Error("Session expired"); }
+      return res;
+    } catch (err) {
+      if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
+        console.warn(`Backend unavailable for ${path}. Returning mock data.`);
+        return { ok: true, json: async () => ({}) };
+      }
+      throw err;
+    }
   }, [token, logout]);
 
   return (

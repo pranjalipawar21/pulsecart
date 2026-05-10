@@ -65,7 +65,7 @@ export default function Login() {
   const selectRole = (r) => {
     setRole(r);
     setUsername(r === "owner" ? "owner" : "staff1");
-    setPassword("demo123");
+    setPassword("pranjal@123");
     setError("");
   };
 
@@ -198,7 +198,7 @@ export default function Login() {
               className="login-input"
               type="password" value={password}
               onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
+              placeholder=""
               required
               style={{
                 width: "100%", padding: "11px 14px", borderRadius: 10,
@@ -238,8 +238,8 @@ export default function Login() {
         <div style={{ marginTop: 20, padding: "12px 14px", background: C.demoBg, borderRadius: 10, border: `1px solid ${C.demoBorder}` }}>
           <div style={{ fontSize: 10, color: C.demoLabel, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 5 }}>Demo Credentials</div>
           <div style={{ fontSize: 11, color: C.textSecondary, lineHeight: 1.7 }}>
-            <span style={{ color: C.textPrimary }}>owner</span> / <span style={{ color: "#D64E12" }}>demo123</span> — full analytics access<br />
-            <span style={{ color: C.textPrimary }}>staff1</span> / <span style={{ color: "#D64E12" }}>demo123</span> — inventory &amp; orders only
+            <span style={{ color: C.textPrimary }}>owner</span> / <span style={{ color: "#D64E12" }}>pranjal@123</span> — full analytics access<br />
+            <span style={{ color: C.textPrimary }}>staff1</span> / <span style={{ color: "#D64E12" }}>pranjal@123</span> — inventory &amp; orders only
           </div>
         </div>
       </div>
