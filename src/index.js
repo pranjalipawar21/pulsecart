@@ -9,6 +9,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { AuthProvider } from "./contexts/AuthContext";
 
 // ── Error Boundary ────────────────────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
@@ -110,7 +111,9 @@ const root = createRoot(container);
 root.render(
   <React.StrictMode>
     <ErrorBoundary>
-      <App />
+      <AuthProvider>
+        <App />
+      </AuthProvider>
     </ErrorBoundary>
   </React.StrictMode>
 );

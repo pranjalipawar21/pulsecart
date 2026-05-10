@@ -6,23 +6,25 @@
   "author": "Pranjali Pawar",
   "homepage": ".",
   "scripts": {
-    "start":  "react-scripts start",
-    "build":  "react-scripts build",
-    "test":   "react-scripts test --watchAll=false",
-    "eject":  "react-scripts eject",
-    "lint":   "eslint src --ext .js,.jsx --max-warnings 0"
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test --watchAll=false",
+    "eject": "react-scripts eject",
+    "lint": "eslint src --ext .js,.jsx --max-warnings 0"
   },
   "dependencies": {
-    "firebase":          "^10.12.0",
-    "react":             "^18.3.1",
-    "react-dom":         "^18.3.1",
-    "react-scripts":     "5.0.1",
-    "recharts":          "^2.12.7"
+    "chart.js": "^4.5.1",
+    "firebase": "^10.12.0",
+    "react": "^18.3.1",
+    "react-chartjs-2": "^5.3.1",
+    "react-dom": "^18.3.1",
+    "react-scripts": "5.0.1",
+    "recharts": "^2.12.7"
   },
   "devDependencies": {
-    "eslint":                        "^8.57.0",
-    "eslint-plugin-react":           "^7.34.2",
-    "eslint-plugin-react-hooks":     "^4.6.2"
+    "eslint": "^8.57.0",
+    "eslint-plugin-react": "^7.34.2",
+    "eslint-plugin-react-hooks": "^4.6.2"
   },
   "eslintConfig": {
     "extends": [
@@ -30,7 +32,7 @@
       "react-app/jest"
     ],
     "rules": {
-      "no-unused-vars":        "warn",
+      "no-unused-vars": "warn",
       "react-hooks/exhaustive-deps": "warn"
     }
   },
@@ -48,6 +50,6 @@
   },
   "engines": {
     "node": ">=18.0.0",
-    "npm":  ">=9.0.0"
+    "npm": ">=9.0.0"
   }
 }

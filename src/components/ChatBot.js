@@ -177,9 +177,20 @@ export default function ChatBot({ T, kpis, gmvSeries, categories, channels, regi
       return;
     }
 
-    // 2. Fall back to Anthropic LLM with dashboard context
+    // 2. Fall back to Gemini LLM with dashboard context
+    const GEMINI_KEY = process.env.REACT_APP_GEMINI_API_KEY;
+    if (!GEMINI_KEY) {
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        text: "Gemini API key not configured (REACT_APP_GEMINI_API_KEY). Add it to .env.local. The rule-based engine covers most queries — try asking about GMV, channels, inventory, or abandonment.",
+        ts: new Date(),
+        source: "fallback",
+      }]);
+      setLoading(false);
+      return;
+    }
     try {
-      const systemPrompt = `You are PulseCart AI, an embedded analytics assistant for an Indian e-commerce retail intelligence dashboard.
+      const systemText = `You are PulseCart AI, an embedded analytics assistant for an Indian e-commerce retail intelligence dashboard.
 
 Dashboard context (live data):
 - GMV: ${fmtINR(kpis?.gmv ?? 0)}
@@ -193,40 +204,34 @@ Dashboard context (live data):
 - Top channel by ROAS: ${channels?.length ? [...channels].sort((a, b) => b.roas - a.roas)[0].ch : "N/A"}
 - Critical inventory SKUs: ${inventory?.filter(i => i.status === "critical").length ?? 0}
 
-Rules:
-- Answer concisely with specific numbers from context above
-- Use INR formatting (₹, L, Cr) not USD
-- Reference real benchmarks: Baymard, Redseer, CRISIL, McKinsey where relevant
-- If asked about UI features, direct user to the correct tab
-- Keep responses under 200 words unless the question demands detail
-- Do not hallucinate data not in the context`;
+Rules: Answer concisely using the live data above. Use INR formatting. Reference real benchmarks (Baymard, Redseer, CRISIL). Keep responses under 200 words. Do not hallucinate.`;
 
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          system: systemPrompt,
-          messages: [
-            ...messages.filter(m => m.role !== "assistant" || !m.source).slice(-6).map(m => ({
-              role: m.role,
-              content: m.text,
-            })),
-            { role: "user", content: q },
-          ],
-        }),
-      });
+      const history = messages
+        .filter(m => m.role !== "assistant" || !m.source)
+        .slice(-6)
+        .map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.text }] }));
 
-      if (!res.ok) throw new Error(`API ${res.status}`);
-      const data = await res.json();
-      const answer = data.content?.map(b => b.text || "").join("").trim() || "No response.";
-      setMessages(prev => [...prev, { role: "assistant", text: answer, ts: new Date(), source: "llm" }]);
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemText }] },
+            contents: [...history, { role: "user", parts: [{ text: q }] }],
+            generationConfig: { maxOutputTokens: 512, temperature: 0.4 },
+          }),
+        }
+      );
+      if (!res.ok) throw new Error(`Gemini API ${res.status}`);
+      const data   = await res.json();
+      const answer = data.candidates?.[0]?.content?.parts?.map(p => p.text).join("").trim() || "No response.";
+      setMessages(prev => [...prev, { role: "assistant", text: answer, ts: new Date(), source: "gemini" }]);
     } catch (err) {
-      console.error("ChatBot LLM error:", err);
+      console.error("ChatBot Gemini error:", err);
       setMessages(prev => [...prev, {
         role: "assistant",
-        text: "The LLM endpoint is unavailable right now. Try a more specific question — I can answer most queries about GMV, channels, inventory, abandonment, and forecasting without the API.",
+        text: "Gemini is unavailable right now. The rule-based engine covers ~85% of queries — try asking about GMV, channels, inventory, or abandonment.",
         ts: new Date(),
         source: "fallback",
       }]);

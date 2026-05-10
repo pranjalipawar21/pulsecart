@@ -66,9 +66,6 @@ export const genKPIs = () => ({
 //         Gudi Padwa (Mar 25), Ram Navami sale (Mar 26), Eid (Apr 12)
 // ═══════════════════════════════════════════════════════════════════════════════
 export const genGMVSeries = () => {
-  const months = ["Jan","Feb","Mar","Apr"];
-  const data   = [];
-
   // Pre-built series with embedded seasonality spikes
   const rawSeries = [
     // January

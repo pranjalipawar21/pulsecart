@@ -4,7 +4,9 @@ import { seedDatabase } from "./seedFirebase";
 import Sentiment from "./components/Sentiment";
 import TaxPage from "./components/TaxPage";
 import ChatBot from "./components/ChatBot";
+import Login from "./components/Login";
 import { fetchWithBackoff } from "./hooks/useFetchWithBackoff";
+import { useAuth } from "./contexts/AuthContext";
 import {
   AreaChart, Area, LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -12,45 +14,59 @@ import {
   PolarAngleAxis, PolarRadiusAxis, Legend,
 } from "recharts";
 import {
+  Chart as ChartJS, CategoryScale, LinearScale, PointElement,
+  LineElement, BarElement, ArcElement, Title, Filler,
+  Tooltip as ChartTooltip, Legend as ChartLegend,
+} from "chart.js";
+import { Line as CJSLine, Doughnut } from "react-chartjs-2"; // eslint-disable-line no-unused-vars
+import {
   genCategoryData, genChannelData, genRegionData, genInventoryAlerts,
   genOrderEvent, forecastGMV, genAbandonmentCohorts, genDemandForecast,
   detectAnomalies, genActivityEvent, toCSV,
   fetchForexRate, fetchIndiaMacro, fetchCryptoPrices,
 } from "./data/mockData";
 
-// ─── Theme tokens ─────────────────────────────────────────────────────────────
+// Register Chart.js components
+ChartJS.register(
+  CategoryScale, LinearScale, PointElement, LineElement,
+  BarElement, ArcElement, Title, Filler, ChartTooltip, ChartLegend
+);
+
+// ─── Theme tokens (upgraded palette) ─────────────────────────────────────────
 const THEMES = {
   light: {
-    bg:       "#F7F8FC",
+    bg:       "#F0F4FF",
     panel:    "#FFFFFF",
-    panelAlt: "#F0F3FA",
-    border:   "#E2E8F4",
-    text:     "#111827",
-    muted:    "#6B7A99",
-    dimmed:   "#EDF0F8",
+    panelAlt: "#F5F7FF",
+    border:   "#DDE3F4",
+    text:     "#0F172A",
+    muted:    "#64748B",
+    dimmed:   "#EEF2FF",
     brand:    "#D64E12",
     brandAlt: "#E8920A",
-    success:  "#0A8F5C",
-    danger:   "#C8294A",
-    info:     "#0369A1",
+    success:  "#059669",
+    danger:   "#DC2626",
+    info:     "#0284C7",
     shadow:   "#0000001A",
     name:     "light",
+    glass:    "rgba(255,255,255,0.7)",
   },
   dark: {
-    bg:       "#080C16",
-    panel:    "#0E1525",
-    panelAlt: "#111927",
-    border:   "#1C2B45",
-    text:     "#E4ECF7",
-    muted:    "#4E6080",
-    dimmed:   "#182030",
+    bg:       "#060B14",
+    panel:    "#0C1524",
+    panelAlt: "#101D2E",
+    border:   "#182A42",
+    text:     "#E2EAF8",
+    muted:    "#4A6080",
+    dimmed:   "#131F30",
     brand:    "#FF6B35",
     brandAlt: "#FF9F1C",
-    success:  "#2DD4A0",
-    danger:   "#F4476B",
+    success:  "#10B981",
+    danger:   "#EF4444",
     info:     "#38BDF8",
-    shadow:   "#00000088",
+    shadow:   "#00000099",
     name:     "dark",
+    glass:    "rgba(12,21,36,0.8)",
   },
 };
 
@@ -158,9 +174,6 @@ function PageHeader({ title, subtitle, T }) {
 
 // ─── Live Pulse Strip — OVERVIEW ONLY ─────────────────────────────────────────
 // NOTE: These counters are simulation-driven. liveGMV starts from Firebase seed
-// data and drifts ±0.3–0.6% per tick using a BTC-volatility-scaled swing factor.
-// In production, replace setLiveGMV/setLiveOrders/setLiveUsers with a WebSocket
-// subscription to your Order Management System (OMS) or payment gateway webhook.
 function LiveStrip({ liveGMV, liveOrders, liveUsers, T }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 22 }}>
@@ -182,31 +195,32 @@ function LiveStrip({ liveGMV, liveOrders, liveUsers, T }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// APP
+// DASHBOARD (inner component — only rendered when authenticated)
 // ═══════════════════════════════════════════════════════════════════════════════
-export default function App() {
-  // ── Theme: light by default ─────────────────────────────────────────────────
+function Dashboard({ user, isOwner, apiFetch, logout }) {
+  // ── Theme: light by default ───────────────────────────────────────────────
   const [themeName, setThemeName] = useState("light");
   const T = THEMES[themeName];
 
   const [dateRange,   setDateRange]   = useState(30);
-  const [tab,         setTab]         = useState("overview");
+  // Role-based tabs: staff only sees inventory + live orders
+  const [tab, setTab] = useState(isOwner ? "overview" : "inventory");
   const [kpis,        setKpis]        = useState(null);
   const [gmvSeries,   setGmvSeries]   = useState([]);
   const [categories,  setCategories]  = useState(genCategoryData);
   const [channels,    setChannels]    = useState(genChannelData);
-const [regions]      = useState(genRegionData);
-  const [inventory]    = useState(genInventoryAlerts);
+  const [regions]                     = useState(genRegionData);
+  const [inventory,   setInventory]   = useState(genInventoryAlerts);
   const [orders,      setOrders]      = useState(() => Array.from({ length: 8 }, (_, i) => ({ ...genOrderEvent(), id: i })));
   const [activity,    setActivity]    = useState(() => Array.from({ length: 6 }, (_, i) => ({ ...genActivityEvent(), id: i, ts: new Date(Date.now() - i * 38000) })));
-  const [abandonment]  = useState(genAbandonmentCohorts);
-const [demand]       = useState(genDemandForecast);
+  const [abandonment]                 = useState(genAbandonmentCohorts);
+  const [demand]                      = useState(genDemandForecast);
   const [discount,    setDiscount]    = useState(0);
+  const [reorderState, setReorderState] = useState({}); // { [id]: 'loading'|'done'|'error' }
 
   const [liveGMV,    setLiveGMV]    = useState(287430);
   const [liveOrders, setLiveOrders] = useState(142);
   const [liveUsers,  setLiveUsers]  = useState(4821);
-  const [tick,       setTick]       = useState(0);
 
   const [forex,    setForex]    = useState({ rate: 83.5,  source: "loading" });
   const [macro,    setMacro]    = useState({ gdpGrowth: 6.8, inflation: 5.4, gdpYear: "2023", source: "loading" });
@@ -285,7 +299,6 @@ const [demand]       = useState(genDemandForecast);
     if (paused || stopped) return;
 
     tickRef.current++;
-    setTick(t => t + 1);
 
     // Refresh BTC every ~54 s with exponential backoff on failure
     if (tickRef.current % 30 === 0) {
@@ -340,14 +353,32 @@ const [demand]       = useState(genDemandForecast);
     ...forecastData.map(d => ({ date: d.date, gmv: null, predicted: d.predicted })),
   ];
 
-  const TABS = ["overview", "ml insights", "channels", "inventory", "sentiment", "live orders", "taxation"];
+  // Role-based tabs
+  const ALL_TABS    = ["overview", "ml insights", "channels", "inventory", "sentiment", "live orders", "taxation"];
+  const STAFF_TABS  = ["inventory", "live orders"];
+  const TABS        = isOwner ? ALL_TABS : STAFF_TABS;
   const statusColor = (type) => ({ success: T.success, warn: T.brandAlt, danger: T.danger, info: T.info }[type] || T.muted);
 
+  // Backend reorder trigger (owner only)
+  async function triggerReorder(item) {
+    if (!isOwner || reorderState[item.id] === "loading") return;
+    setReorderState(p => ({ ...p, [item.id]: "loading" }));
+    try {
+      await apiFetch(`/api/inventory/${item.id}/reorder`, { method: "PUT", body: JSON.stringify({ quantity: 100 }) });
+      setInventory(prev => prev.map(i => i.id === item.id ? { ...i, stock: i.stock + 100 } : i));
+      setReorderState(p => ({ ...p, [item.id]: "done" }));
+      setTimeout(() => setReorderState(p => ({ ...p, [item.id]: null })), 3000);
+    } catch {
+      setReorderState(p => ({ ...p, [item.id]: "error" }));
+    }
+  }
+
   if (!kpis) return (
-    <div style={{ minHeight: "100vh", background: THEMES.light.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'IBM Plex Sans',sans-serif" }}>
-      <div style={{ textAlign: "center" }}>
-        <div style={{ width: 40, height: 40, borderRadius: 10, background: `linear-gradient(135deg,${THEMES.light.brand},${THEMES.light.brandAlt})`, margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 18 }}>P</div>
-        <div style={{ color: THEMES.light.muted, fontSize: 13 }}>Connecting to Firebase…</div>
+    <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'IBM Plex Sans',sans-serif" }}>
+      <div style={{ textAlign: "center", padding: 40, background: T.panel, borderRadius: 24, border: `1px solid ${T.border}`, boxShadow: `0 20px 40px ${T.shadow}` }}>
+        <div style={{ width: 64, height: 64, borderRadius: 18, background: `linear-gradient(135deg,${T.brand},${T.brandAlt})`, margin: "0 auto 24px", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 28, boxShadow: `0 12px 32px ${T.brand}44` }}>P</div>
+        <div style={{ color: T.text, fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Initializing Systems</div>
+        <div style={{ color: T.muted, fontSize: 13 }}>Syncing real-time intelligence nodes…</div>
       </div>
     </div>
   );
@@ -362,22 +393,25 @@ const [demand]       = useState(genDemandForecast);
         ::-webkit-scrollbar-thumb{background:${T.border};border-radius:3px}
         @keyframes fadeSlide{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.35}}
-        .tab-btn{background:none;border:none;cursor:pointer;padding:7px 15px;border-radius:7px;font-family:'IBM Plex Sans',sans-serif;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;transition:all 0.15s;color:${T.muted};white-space:nowrap}
+        @keyframes shimmer{0%{opacity:0.6}50%{opacity:1}100%{opacity:0.6}}
+        .tab-btn{background:none;border:none;cursor:pointer;padding:8px 16px;border-radius:10px;font-family:'IBM Plex Sans',sans-serif;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;transition:all 0.2s;color:${T.muted};white-space:nowrap}
         .tab-btn:hover{background:${T.dimmed};color:${T.text}}
-        .tab-btn.active{background:${T.brand};color:#fff}
+        .tab-btn.active{background:linear-gradient(135deg,${T.brand},${T.brandAlt});color:#fff;box-shadow:0 4px 12px ${T.brand}44}
         .row-h:hover{background:${T.dimmed}!important}
         .pulse{animation:pulse 1.8s infinite}
+        .pc-card{background:${T.panel};border:1px solid ${T.border};border-radius:14px;padding:20px;transition:box-shadow 0.2s}
+        .pc-card:hover{box-shadow:0 8px 32px ${T.shadow}}
         input[type=range]{-webkit-appearance:none;appearance:none;height:5px;border-radius:3px;background:${T.dimmed};outline:none}
         input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:${T.brand};cursor:pointer;border:2px solid ${T.panel};box-shadow:0 0 0 2px ${T.brand}33}
       `}</style>
 
-      {/* ══ NAVBAR ══════════════════════════════════════════════════════════ */}
-      <header style={{ position: "sticky", top: 0, zIndex: 200, background: `${T.panel}EE`, borderBottom: `1px solid ${T.border}`, backdropFilter: "blur(12px)", padding: "0 24px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+      {/* ══ NAVBAR ══════════════════════════════════════════════════════════════════ */}
+      <header style={{ position: "sticky", top: 0, zIndex: 200, background: `${T.panel}EE`, borderBottom: `1px solid ${T.border}`, backdropFilter: "blur(16px)", padding: "0 24px", height: 58, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
         {/* Brand */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: `linear-gradient(135deg,${T.brand},${T.brandAlt})`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 15, color: "#fff" }}>P</div>
+          <div style={{ width: 34, height: 34, borderRadius: 10, background: `linear-gradient(135deg,${T.brand},${T.brandAlt})`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 16, color: "#fff", boxShadow: `0 4px 12px ${T.brand}44` }}>P</div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.02em", color: T.text, lineHeight: 1 }}>PulseCart</div>
+            <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.025em", color: T.text, lineHeight: 1 }}>PulseCart</div>
             <div style={{ fontSize: 9, color: T.muted, letterSpacing: "0.14em", textTransform: "uppercase" }}>Retail Intelligence</div>
           </div>
         </div>
@@ -767,9 +801,23 @@ const [demand]       = useState(genDemandForecast);
                         </span>
                       </td>
                       <td style={{ padding: "12px" }}>
-                        <button style={{ background: `${T.brand}18`, color: T.brand, border: `1px solid ${T.brand}33`, borderRadius: 7, padding: "4px 12px", fontSize: 11, cursor: "pointer", fontWeight: 600 }}>
-                          Reorder
-                        </button>
+                        {isOwner ? (
+                          <button
+                            onClick={() => triggerReorder(i)}
+                            disabled={reorderState[i.id] === "loading"}
+                            style={{
+                              background: reorderState[i.id] === "done" ? `${T.success}18` : reorderState[i.id] === "error" ? `${T.danger}18` : `${T.brand}18`,
+                              color: reorderState[i.id] === "done" ? T.success : reorderState[i.id] === "error" ? T.danger : T.brand,
+                              border: `1px solid ${reorderState[i.id] === "done" ? T.success : reorderState[i.id] === "error" ? T.danger : T.brand}33`,
+                              borderRadius: 7, padding: "5px 14px", fontSize: 11, cursor: "pointer", fontWeight: 700,
+                              transition: "all 0.2s",
+                            }}
+                          >
+                            {reorderState[i.id] === "loading" ? "…" : reorderState[i.id] === "done" ? "✓ Reordered" : reorderState[i.id] === "error" ? "✗ Failed" : "⟳ Reorder"}
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: 10, color: T.muted, fontStyle: "italic" }}>Owner only</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -875,4 +923,13 @@ const [demand]       = useState(genDemandForecast);
       />
     </div>
   );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// APP — auth gate
+// ═══════════════════════════════════════════════════════════════════════════════
+export default function App() {
+  const { user, isOwner, apiFetch, logout } = useAuth();
+  if (!user) return <Login />;
+  return <Dashboard user={user} isOwner={isOwner} apiFetch={apiFetch} logout={logout} />;
 }
