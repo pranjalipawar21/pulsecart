@@ -28,6 +28,9 @@ export function AuthProvider({ children }) {
       // Fallback for live demo without backend
       if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
         console.warn("Backend unavailable. Simulating login for demo purposes.");
+        if (password !== "pranjal@123") {
+          throw new Error("Invalid credentials");
+        }
         const mockUser = { id: 1, username, role: username === "owner" ? "owner" : "staff", full_name: "Demo User" };
         const mockToken = "mock_token_demo_123";
         localStorage.setItem("pc_token", mockToken);
