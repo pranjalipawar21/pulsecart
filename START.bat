@@ -50,7 +50,7 @@ if %ERRORLEVEL% neq 0 (
 echo  Node.js version:
 node --version
 echo  npm version:
-npm --version
+call npm --version
 echo.
 
 :: ── Install frontend dependencies if needed ──────────────────────────────────
@@ -58,7 +58,7 @@ if not exist "node_modules\" (
   echo  [INFO] Frontend node_modules not found — running npm install...
   echo  This may take 1-3 minutes on first run.
   echo.
-  npm install
+  call npm install
   if %ERRORLEVEL% neq 0 (
     echo.
     echo  [ERROR] npm install failed. Check your internet connection and try again.
@@ -75,7 +75,7 @@ if not exist "server\node_modules\" (
   echo  [INFO] Backend node_modules not found — running npm install...
   echo.
   pushd server
-  npm install
+  call npm install
   popd
   if %ERRORLEVEL% neq 0 (
     echo  [ERROR] Backend npm install failed.
@@ -120,7 +120,7 @@ echo.
 :: Open browser after 4 second delay
 start /b cmd /c "timeout /t 4 /nobreak >nul && start http://localhost:3000"
 
-npm start
+call npm start
 
 :: ── If server exits ──────────────────────────────────────────────────────────
 echo.

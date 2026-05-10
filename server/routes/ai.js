@@ -196,6 +196,7 @@ Consider Indian e-commerce calendar: Diwali, Valentine's, Holi, Eid, Independenc
     console.error('Anomaly explain error:', err.message);
     res.status(500).json({ error: 'Explanation failed', detail: err.message });
   }
+});
 // ─── POST /api/ai/chat ────────────────────────────────────────────────────────
 // Natural language chatbot handler using context data
 router.post('/chat', requireAuth, async (req, res) => {

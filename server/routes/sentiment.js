@@ -119,6 +119,7 @@ IMPORTANT: Provide a complete and realistic JSON response for every request. Do 
     console.error('Sentiment analysis error:', err.message);
     res.status(500).json({ error: 'Sentiment analysis failed', detail: err.message });
   }
+});
 // ─── POST /api/sentiment/analyze-text ─────────────────────────────────────────
 // LLM Second pass for individual reviews
 router.post('/analyze-text', requireAuth, async (req, res) => {
