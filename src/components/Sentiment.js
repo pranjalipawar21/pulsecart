@@ -324,12 +324,35 @@ Review: "${liveText.replace(/"/g, "'")}"`;
       await new Promise(r => setTimeout(r, 1500));
       addLog("✓ Complete! Generating product summary...");
       
-      const pName = productInfo.slug ? productInfo.slug.replace(/\b\w/g, c => c.toUpperCase()) : "Smart Earbuds";
-      const mockResult = {
-        product: `Philips ${pName} - In-Ear Bluetooth TWS`,
-        brand: "Philips",
-        category: "Audio",
-        priceRange: "₹1,200 - ₹1,500",
+      const pName = productInfo.slug ? productInfo.slug.replace(/\b\w/g, c => c.toUpperCase()) : "Premium Product";
+      const isFashion = /blouse|shirt|dress|jeans|top|apparel|textiles/i.test(urlInput + pName);
+
+      const mockResult = isFashion ? {
+        product: pName,
+        brand: productInfo.slug?.split(" ")[0]?.toUpperCase() || "Fashion Brand",
+        category: "Clothing & Apparel",
+        priceRange: "₹499 - ₹1,299",
+        total: 240,
+        positive: 180,
+        neutral: 40,
+        negative: 20,
+        avgRating: 4.4,
+        avgScore: 0.72,
+        aspects: [
+          { aspect: "Fabric Quality", sentiment: "positive", count: 85, phrase: "soft material, comfortable to wear" },
+          { aspect: "Fit & Size", sentiment: "neutral", count: 45, phrase: "runs slightly small, order one size up" },
+          { aspect: "Design/Look", sentiment: "positive", count: 60, phrase: "beautiful color, looks exactly like photo" },
+          { aspect: "Durability", sentiment: "negative", count: 15, phrase: "color faded slightly after first wash" }
+        ],
+        topPositive: "The fit is perfect and the fabric feels very premium for this price. Highly recommend!",
+        topNegative: "Received a slightly different shade than what was shown in the pictures. Size is also a bit tight.",
+        recommendation: "Focus on size-guide accuracy and fabric longevity to reduce return rates in the apparel segment.",
+        competitorComparison: "Better fabric density than budget alternatives, but sizing is less consistent than top-tier brands."
+      } : {
+        product: pName,
+        brand: productInfo.slug?.split(" ")[0]?.toUpperCase() || "Tech Brand",
+        category: "Electronics",
+        priceRange: "₹2,500 - ₹4,999",
         total: 120,
         positive: 85,
         neutral: 20,
@@ -337,15 +360,15 @@ Review: "${liveText.replace(/"/g, "'")}"`;
         avgRating: 4.2,
         avgScore: 0.65,
         aspects: [
-          { aspect: "Sound Quality", sentiment: "positive", count: 45, phrase: "good bass, clear vocals" },
-          { aspect: "Battery Life", sentiment: "positive", count: 30, phrase: "lasts over 30 hours easily" },
-          { aspect: "Build Quality", sentiment: "neutral", count: 25, phrase: "feels a bit plasticky" },
-          { aspect: "Connectivity", sentiment: "negative", count: 12, phrase: "bluetooth drops occasionally" }
+          { aspect: "Performance", sentiment: "positive", count: 45, phrase: "snappy UI, no lag in daily tasks" },
+          { aspect: "Battery Life", sentiment: "positive", count: 30, phrase: "easily lasts a full day" },
+          { aspect: "Build Quality", sentiment: "neutral", count: 25, phrase: "sturdy but feels a bit heavy" },
+          { aspect: "Value for Money", sentiment: "positive", count: 12, phrase: "best specs in this price segment" }
         ],
-        topPositive: "Excellent sound for the price. The bass is punchy and battery lasts forever.",
-        topNegative: "Left earbud stopped pairing after 2 weeks. Plastic quality is cheap.",
-        recommendation: "Recommended for budget buyers looking for battery life and brand reliability, but warn users about occasional pairing issues.",
-        competitorComparison: "Better battery than boAt Airdopes 141, but build quality feels less premium compared to Realme Buds."
+        topPositive: "Excellent value for money. Performance is top-notch and battery is reliable.",
+        topNegative: "The charging speed is a bit slow compared to modern standards. Otherwise great.",
+        recommendation: "Improve fast-charging capabilities in the next iteration to stay competitive.",
+        competitorComparison: "Performance matches higher-priced models, but missing some premium features like wireless charging."
       };
       
       setPipelineResult(mockResult);
