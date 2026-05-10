@@ -24,6 +24,7 @@ import {
   genOrderEvent, forecastGMV, genAbandonmentCohorts, genDemandForecast,
   detectAnomalies, genActivityEvent, toCSV,
   fetchForexRate, fetchIndiaMacro, fetchCryptoPrices,
+  genKPIs, genGMVSeries,
 } from "./data/mockData";
 
 // Register Chart.js components
@@ -245,6 +246,23 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
       const data = snap.val();
       if (data) { setLiveGMV(data.gmv); setLiveOrders(data.orders); setLiveUsers(data.users); }
     });
+
+    // Fallback if Firebase fails to connect (e.g., missing API key on deployed site)
+    const fallbackTimer = setTimeout(() => {
+      setKpis(prev => {
+        if (!prev) {
+          console.warn("Firebase not connected. Falling back to local mock data.");
+          return genKPIs();
+        }
+        return prev;
+      });
+      setGmvSeries(prev => {
+        if (!prev || prev.length === 0) return genGMVSeries();
+        return prev;
+      });
+    }, 1500);
+
+    return () => clearTimeout(fallbackTimer);
   }, []);
 
  useEffect(() => {
