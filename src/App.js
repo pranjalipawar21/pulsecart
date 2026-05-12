@@ -799,6 +799,8 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
         )}
 
         {/* ══ INVENTORY ════════════════════════════════════════════════════════ */}
+        {tab === "inventory" && (
+          <>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
               <div style={{ background: T.panel, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20 }}>
                 <SH title="Bulk Operations" T={T} />
@@ -874,18 +876,6 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
               setTab("inventory");
             }} />
             <button onClick={() => setTab("inventory")} style={{ marginTop: '20px' }}>Cancel</button>
-          </div>
-        )}
-
-        {/* ══ SETTINGS ═════════════════════════════════════════════════════════ */}
-        {tab === "settings" && (
-          <div style={{ background: T.panel, padding: '30px', borderRadius: '15px', border: `1px solid ${T.border}` }}>
-            <h3>System Settings</h3>
-            <div style={{ marginTop: '20px', display: 'flex', alignItems: 'center', gap: '20px' }}>
-              <span>Theme Preference:</span>
-              <button onClick={() => setThemeName("light")} style={{ background: themeName === "light" ? T.brand : T.dimmed, color: themeName === "light" ? "#fff" : T.text }}>Light Mode</button>
-              <button onClick={() => setThemeName("dark")} style={{ background: themeName === "dark" ? T.brand : T.dimmed, color: themeName === "dark" ? "#fff" : T.text }}>Dark Mode</button>
-            </div>
           </div>
         )}
 
