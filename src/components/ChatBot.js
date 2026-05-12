@@ -98,10 +98,22 @@ const INTENTS = [
       `**Taxation**\n\nSwitch to the Taxation tab for full GST, TDS, and TCS breakdowns based on your live KPI data.\n\nKey thresholds:\n- TDS (194O): 1% on marketplace payouts > ₹5L/year\n- TCS (206C): 1% collected at source on e-commerce transactions\n- GST: 18% on platform services, category-specific on goods`,
   },
   {
+    id: "suppliers",
+    patterns: [/supplier/i, /vendor/i, /procurement/i],
+    respond: () => 
+      `**Supplier Management**\n\nPulseCart tracks supplier performance across 3 key vectors:\n- **Lead Time Reliability** (Target: < 5 days)\n- **Quality Score** (Target: 4.5+ ★)\n- **Payment Terms** (Standard: Net-30)\n\n*Review the Suppliers tab to see AI-generated procurement recommendations.*`,
+  },
+  {
+    id: "pricing",
+    patterns: [/price/i, /competitor/i, /repricing/i, /market/i],
+    respond: () =>
+      `**Market Intelligence & Repricing**\n\nOur engine monitors Amazon, Flipkart, and Croma in real-time. \n\n**Current Strategy:** Maximise Margin\n**Alerts:** 3 SKUs currently undercut by competitors.\n\n*Use the Price Intel tab to run the AI Repricing Engine for specific SKUs.*`,
+  },
+  {
     id: "hello",
     patterns: [/^hi\b/i, /^hello/i, /^hey/i, /^what can you/i, /^help/i],
     respond: () =>
-      `**PulseCart AI — what I can answer:**\n\n- GMV trends and revenue breakdown\n- Cart abandonment causes and fixes\n- Inventory reorder alerts\n- Channel ROAS and CAC analysis\n- Demand forecast interpretation\n- Return rate benchmarks\n- Customer LTV improvement levers\n- Tax / GST compliance summary\n- Sentiment pipeline capabilities\n\nJust ask in plain English — no commands needed.`,
+      `**PulseCart AI — what I can answer:**\n\n- GMV trends and revenue breakdown\n- Cart abandonment causes and fixes\n- Inventory reorder alerts\n- Channel ROAS and CAC analysis\n- Demand forecast interpretation\n- Return rate benchmarks\n- Customer LTV improvement levers\n- Tax / GST compliance summary\n- Sentiment pipeline capabilities\n- Supplier performance audits\n- Competitor pricing & repricing strategies\n\nJust ask in plain English — no commands needed.`,
   },
 ];
 

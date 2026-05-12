@@ -72,4 +72,68 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
+// ─── GET /api/orders/:id/invoice ──────────────────────────────────────────────
+router.get('/:id/invoice', requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const PDFDocument = require('pdfkit');
+
+  try {
+    let order = null;
+    if (isAvailable()) {
+      const [rows] = await getPool().execute('SELECT * FROM orders WHERE id = ?', [id]);
+      order = rows[0];
+    } else {
+      order = memOrders.find(o => o.id == id || o.order_id == id);
+    }
+
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const doc = new PDFDocument({ margin: 50 });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=invoice_${order.order_id}.pdf`);
+    doc.pipe(res);
+
+    // Header
+    doc.fontSize(20).text('PulseCart Retail Intelligence', { align: 'center' });
+    doc.fontSize(10).text('GSTIN: 27AAAAA0000A1Z5', { align: 'center' });
+    doc.moveDown();
+    doc.fontSize(16).text('TAX INVOICE', { underline: true });
+    doc.moveDown();
+
+    // Details
+    doc.fontSize(12).text(`Order ID: ${order.order_id}`);
+    doc.text(`Date: ${new Date(order.created_at).toLocaleDateString()}`);
+    doc.text(`Customer: ${order.customer}`);
+    doc.moveDown();
+
+    // Table Header
+    const tableTop = 250;
+    doc.font('Helvetica-Bold');
+    doc.text('Description', 50, tableTop);
+    doc.text('Category', 250, tableTop);
+    doc.text('Amount (INR)', 450, tableTop, { align: 'right' });
+    doc.moveDown();
+    doc.font('Helvetica');
+    doc.lineJoin('round').rect(50, tableTop + 15, 500, 1).fill('#000');
+
+    // Table Content
+    const itemY = tableTop + 30;
+    doc.text(`Order Item - ${order.category}`, 50, itemY);
+    doc.text(order.category, 250, itemY);
+    doc.text(`₹${Number(order.amount).toLocaleString('en-IN')}`, 450, itemY, { align: 'right' });
+
+    // Totals
+    const totalY = itemY + 50;
+    const cgst = order.amount * 0.09;
+    const sgst = order.amount * 0.09;
+    doc.text(`CGST (9%): ₹${cgst.toFixed(2)}`, 450, totalY, { align: 'right' });
+    doc.text(`SGST (9%): ₹${sgst.toFixed(2)}`, 450, totalY + 20, { align: 'right' });
+    doc.fontSize(14).font('Helvetica-Bold').text(`Total: ₹${(Number(order.amount) + cgst + sgst).toLocaleString('en-IN')}`, 450, totalY + 50, { align: 'right' });
+
+    doc.end();
+  } catch (err) {
+    res.status(500).json({ error: 'Invoice generation failed' });
+  }
+});
+
 module.exports = router;

@@ -3,8 +3,27 @@ const bcrypt   = require('bcryptjs');
 const jwt      = require('jsonwebtoken');
 const { isAvailable, getPool, FALLBACK } = require('../db');
 
-const SECRET  = process.env.JWT_SECRET || 'pulsecart_dev_secret';
-const EXPIRES = '24h';
+const SECRET          = process.env.JWT_SECRET || 'pulsecart_dev_secret';
+const REFRESH_SECRET  = process.env.REFRESH_SECRET || 'pulsecart_refresh_dev_secret';
+const EXPIRES         = '1h';
+const REFRESH_EXPIRES = '7d';
+
+// ─── Utility: Generate Tokens ────────────────────────────────────────────────
+const generateTokens = async (user) => {
+  const payload = { id: user.id, username: user.username, role: user.role, full_name: user.full_name };
+  const accessToken = jwt.sign(payload, SECRET, { expiresIn: EXPIRES });
+  const refreshToken = jwt.sign({ id: user.id }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
+
+  if (isAvailable()) {
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    await getPool().execute(
+      'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, ?)',
+      [user.id, refreshToken, expiresAt]
+    );
+  }
+
+  return { accessToken, refreshToken };
+};
 
 // ─── POST /api/auth/login ─────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
@@ -17,32 +36,25 @@ router.post('/login', async (req, res) => {
     let user = null;
 
     if (isAvailable()) {
-      // MySQL path
       const [rows] = await getPool().execute(
         'SELECT id, username, password_hash, role, full_name FROM users WHERE username = ?',
         [username]
       );
       user = rows[0] || null;
     } else {
-      // In-memory fallback path
       user = FALLBACK.users.find(u => u.username === username) || null;
     }
 
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
-    // Validate password with bcrypt
     const valid = await bcrypt.compare(password, user.password_hash);
-
     if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role, full_name: user.full_name },
-      SECRET,
-      { expiresIn: EXPIRES }
-    );
+    const { accessToken, refreshToken } = await generateTokens(user);
 
     res.json({
-      token,
+      token: accessToken,
+      refreshToken,
       user: { id: user.id, username: user.username, role: user.role, full_name: user.full_name },
     });
   } catch (err) {
@@ -51,7 +63,42 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// ─── GET /api/auth/me  (token validation) ─────────────────────────────────────
+// ─── POST /api/auth/refresh ───────────────────────────────────────────────────
+router.post('/refresh', async (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) return res.status(400).json({ error: 'Refresh token required' });
+
+  try {
+    const decoded = jwt.verify(refreshToken, REFRESH_SECRET);
+    
+    if (isAvailable()) {
+      const [rows] = await getPool().execute(
+        'SELECT id FROM refresh_tokens WHERE token = ? AND user_id = ? AND expires_at > NOW()',
+        [refreshToken, decoded.id]
+      );
+      if (rows.length === 0) return res.status(401).json({ error: 'Invalid or expired refresh token' });
+
+      // Rotate token: Delete old, create new
+      await getPool().execute('DELETE FROM refresh_tokens WHERE token = ?', [refreshToken]);
+      
+      const [userRows] = await getPool().execute(
+        'SELECT id, username, role, full_name FROM users WHERE id = ?',
+        [decoded.id]
+      );
+      const user = userRows[0];
+      const tokens = await generateTokens(user);
+      res.json({ token: tokens.accessToken, refreshToken: tokens.refreshToken });
+    } else {
+      // Fallback: just sign a new one without rotation database check
+      const tokens = await generateTokens({ id: decoded.id });
+      res.json({ token: tokens.accessToken, refreshToken: tokens.refreshToken });
+    }
+  } catch (err) {
+    res.status(401).json({ error: 'Invalid refresh token' });
+  }
+});
+
+// ─── GET /api/auth/me ────────────────────────────────────────────────────────
 router.get('/me', (req, res) => {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) return res.status(401).json({ error: 'No token' });

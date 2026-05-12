@@ -3,6 +3,13 @@ import Sentiment from "./components/Sentiment";
 import TaxPage from "./components/TaxPage";
 import ChatBot from "./components/ChatBot";
 import Login from "./components/Login";
+import CustomerManager from "./components/CustomerManager";
+import BarcodeScanner from "./components/BarcodeScanner";
+import SuppliersTab from "./components/SuppliersTab";
+import PriceIntelTab from "./components/PriceIntelTab";
+import AIReportsTab from "./components/AIReportsTab";
+import NotificationsTab from "./components/NotificationsTab";
+import SettingsTab from "./components/SettingsTab";
 import { fetchWithBackoff } from "./hooks/useFetchWithBackoff";
 import { useAuth } from "./contexts/AuthContext";
 import {
@@ -376,7 +383,7 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
   ];
 
   // Role-based tabs
-  const ALL_TABS    = ["overview", "ml insights", "channels", "inventory", "sentiment", "live orders", "taxation"];
+  const ALL_TABS    = ["overview", "inventory", "customers", "ml insights", "channels", "sentiment", "suppliers", "price intel", "ai reports", "live orders", "taxation", "settings"];
   const STAFF_TABS  = ["inventory", "live orders"];
   const TABS        = isOwner ? ALL_TABS : STAFF_TABS;
   const statusColor = (type) => ({ success: T.success, warn: T.brandAlt, danger: T.danger, info: T.info }[type] || T.muted);
@@ -425,6 +432,16 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
         .pc-card:hover{box-shadow:0 8px 32px ${T.shadow}}
         input[type=range]{-webkit-appearance:none;appearance:none;height:5px;border-radius:3px;background:${T.dimmed};outline:none}
         input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:${T.brand};cursor:pointer;border:2px solid ${T.panel};box-shadow:0 0 0 2px ${T.brand}33}
+        
+        /* Mobile Responsiveness Overrides */
+        @media (max-width: 768px) {
+          header { flex-direction: column; height: auto !important; padding: 15px !important; }
+          nav { margin: 10px 0; }
+          main { padding: 15px !important; }
+          .grid-responsive { grid-template-columns: 1fr !important; }
+          .chart-container { height: 180px !important; }
+          .kpi-grid { grid-template-columns: 1fr 1fr !important; }
+        }
       `}</style>
 
       {/* ══ NAVBAR ══════════════════════════════════════════════════════════════════ */}
@@ -782,30 +799,35 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
         )}
 
         {/* ══ INVENTORY ════════════════════════════════════════════════════════ */}
-        {tab === "inventory" && (
-          <>
-            <PageHeader title="Inventory Intelligence" subtitle="Stock alerts · Reorder recommendations · Turnover analysis" T={T} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 18 }}>
-              {[
-                { label: "Critical SKUs",       value: inventory.filter(i => i.status === "critical").length, color: T.danger,   icon: "⚠" },
-                { label: "Low Stock SKUs",       value: inventory.filter(i => i.status === "low").length,     color: T.brandAlt, icon: "↓" },
-                { label: "Avg Inventory Turns",  value: `${(inventory.reduce((s, i) => s + parseFloat(i.turnover), 0) / inventory.length).toFixed(1)}×`, color: T.success, icon: "↺" },
-              ].map(s => (
-                <div key={s.label} style={{ background: T.panel, border: `1px solid ${s.color}33`, borderRadius: 12, padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <div style={{ fontSize: 10, color: T.muted, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600, marginBottom: 6 }}>{s.label}</div>
-                    <div style={{ fontSize: 26, fontWeight: 700, color: s.color }}>{s.value}</div>
-                  </div>
-                  <div style={{ fontSize: 28, color: s.color, opacity: 0.3, fontWeight: 700 }}>{s.icon}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+              <div style={{ background: T.panel, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20 }}>
+                <SH title="Bulk Operations" T={T} />
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button onClick={() => window.location.href='/api/inventory/export'} style={{ background: T.brand, color: '#fff', border: 'none', padding: '8px 15px', borderRadius: '8px', cursor: 'pointer' }}>Export CSV</button>
+                  <label style={{ background: T.info, color: '#fff', padding: '8px 15px', borderRadius: '8px', cursor: 'pointer' }}>
+                    Import CSV
+                    <input type="file" hidden onChange={async (e) => {
+                      const file = e.target.files[0];
+                      const formData = new FormData();
+                      formData.append('file', file);
+                      await apiFetch('/api/inventory/import', { method: 'POST', body: formData });
+                      window.location.reload();
+                    }} />
+                  </label>
                 </div>
-              ))}
+              </div>
+              <div style={{ background: T.panel, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20 }}>
+                <SH title="Barcode Scanner" T={T} />
+                <button onClick={() => setTab("scanner")} style={{ background: T.brandAlt, color: '#fff', border: 'none', padding: '8px 15px', borderRadius: '8px', cursor: 'pointer' }}>Open Camera</button>
+              </div>
             </div>
+
             <div style={{ background: T.panel, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20, marginBottom: 16 }}>
               <SH title="Inventory Alert Dashboard" badge="Reorder Intelligence" T={T} action={<ExportBtn data={inventory} filename="pulsecart_inventory.csv" T={T} />} />
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${T.border}` }}>
-                    {["Product", "Stock", "Reorder At", "Turnover", "Status", "Action"].map(h => (
+                    {["Product", "Location", "Stock", "Reorder At", "Status", "Action"].map(h => (
                       <th key={h} style={{ padding: "8px 12px", textAlign: "left", color: T.muted, fontSize: 10, fontWeight: 600, letterSpacing: "0.06em" }}>{h}</th>
                     ))}
                   </tr>
@@ -814,53 +836,57 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
                   {inventory.map(i => (
                     <tr key={i.product} className="row-h" style={{ borderBottom: `1px solid ${T.dimmed}`, transition: "background 0.12s" }}>
                       <td style={{ padding: "12px", fontWeight: 600, color: T.text }}>{i.product}</td>
+                      <td style={{ padding: "12px", color: T.muted }}>{i.location || 'Warehouse A'}</td>
                       <td style={{ padding: "12px", fontWeight: 700, color: i.stock < 20 ? T.danger : i.stock < 40 ? T.brandAlt : T.success }}>{i.stock} units</td>
-                      <td style={{ padding: "12px", color: T.muted }}>{i.reorder} units</td>
-                      <td style={{ padding: "12px", color: T.info }}>{i.turnover}× / yr</td>
+                      <td style={{ padding: "12px", color: T.muted }}>{i.reorder_threshold} units</td>
                       <td style={{ padding: "12px" }}>
                         <span style={{ background: i.status === "critical" ? `${T.danger}18` : `${T.brandAlt}18`, color: i.status === "critical" ? T.danger : T.brandAlt, fontSize: 10, padding: "3px 9px", borderRadius: 20, fontWeight: 600 }}>
                           {i.status.toUpperCase()}
                         </span>
                       </td>
                       <td style={{ padding: "12px" }}>
-                        {isOwner ? (
-                          <button
-                            onClick={() => triggerReorder(i)}
-                            disabled={reorderState[i.id] === "loading"}
-                            style={{
-                              background: reorderState[i.id] === "done" ? `${T.success}18` : reorderState[i.id] === "error" ? `${T.danger}18` : `${T.brand}18`,
-                              color: reorderState[i.id] === "done" ? T.success : reorderState[i.id] === "error" ? T.danger : T.brand,
-                              border: `1px solid ${reorderState[i.id] === "done" ? T.success : reorderState[i.id] === "error" ? T.danger : T.brand}33`,
-                              borderRadius: 7, padding: "5px 14px", fontSize: 11, cursor: "pointer", fontWeight: 700,
-                              transition: "all 0.2s",
-                            }}
-                          >
-                            {reorderState[i.id] === "loading" ? "…" : reorderState[i.id] === "done" ? "✓ Reordered" : reorderState[i.id] === "error" ? "✗ Failed" : "⟳ Reorder"}
-                          </button>
-                        ) : (
-                          <span style={{ fontSize: 10, color: T.muted, fontStyle: "italic" }}>Owner only</span>
-                        )}
+                        <div style={{ display: 'flex', gap: '5px' }}>
+                          <button onClick={() => triggerReorder(i)}>⟳</button>
+                          <button onClick={async () => {
+                            const res = await apiFetch('/api/ai/product-description', { method: 'POST', body: JSON.stringify({ sku: i.sku }) });
+                            const data = await res.json();
+                            alert(data.description);
+                          }}>AI</button>
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <div style={{ background: T.panel, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20 }}>
-              <SH title="Stock vs Reorder Point" T={T} />
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={inventory} margin={{ left: 0, right: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={T.dimmed} vertical={false} />
-                  <XAxis dataKey="product" tick={{ fill: T.muted, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={v => v.split(" ")[0]} />
-                  <YAxis tick={{ fill: T.muted, fontSize: 9 }} axisLine={false} tickLine={false} />
-                  <Tooltip content={<ChartTip T={T} />} />
-                  <Legend wrapperStyle={{ fontSize: 11, color: T.muted }} />
-                  <Bar dataKey="stock"   name="Current Stock"  fill={T.brand} fillOpacity={0.82} radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="reorder" name="Reorder Point"  fill={T.muted} fillOpacity={0.4}  radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
           </>
+        )}
+
+        {/* ══ CUSTOMERS ════════════════════════════════════════════════════════ */}
+        {tab === "customers" && <CustomerManager />}
+
+        {/* ══ SCANNER ══════════════════════════════════════════════════════════ */}
+        {tab === "scanner" && (
+          <div style={{ background: T.panel, padding: '40px', borderRadius: '15px' }}>
+            <BarcodeScanner onScanSuccess={(sku) => {
+              apiFetch(`/api/inventory/sku/${sku}/stock`, { method: 'POST', body: JSON.stringify({ adjustment: 1 }) });
+              alert(`Stock updated for ${sku}`);
+              setTab("inventory");
+            }} />
+            <button onClick={() => setTab("inventory")} style={{ marginTop: '20px' }}>Cancel</button>
+          </div>
+        )}
+
+        {/* ══ SETTINGS ═════════════════════════════════════════════════════════ */}
+        {tab === "settings" && (
+          <div style={{ background: T.panel, padding: '30px', borderRadius: '15px', border: `1px solid ${T.border}` }}>
+            <h3>System Settings</h3>
+            <div style={{ marginTop: '20px', display: 'flex', alignItems: 'center', gap: '20px' }}>
+              <span>Theme Preference:</span>
+              <button onClick={() => setThemeName("light")} style={{ background: themeName === "light" ? T.brand : T.dimmed, color: themeName === "light" ? "#fff" : T.text }}>Light Mode</button>
+              <button onClick={() => setThemeName("dark")} style={{ background: themeName === "dark" ? T.brand : T.dimmed, color: themeName === "dark" ? "#fff" : T.text }}>Dark Mode</button>
+            </div>
+          </div>
         )}
 
         {/* ══ SENTIMENT ════════════════════════════════════════════════════════ */}
@@ -894,11 +920,14 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
                         <td style={{ padding: "10px", color: T.muted, fontSize: 11 }}>{o.region}</td>
                         <td style={{ padding: "10px", fontWeight: 700, color: T.success }}>₹{o.amount.toLocaleString("en-IN")}</td>
                         <td style={{ padding: "10px" }}>
-                          <span style={{
-                            fontSize: 10, padding: "3px 9px", borderRadius: 20, fontWeight: 600,
-                            background: o.status === "delivered" ? `${T.success}18` : o.status === "shipped" ? `${T.info}18` : o.status === "processing" ? `${T.brandAlt}18` : `${T.muted}18`,
-                            color:      o.status === "delivered" ? T.success      : o.status === "shipped"   ? T.info       : o.status === "processing" ? T.brandAlt      : T.muted,
-                          }}>{o.status}</span>
+                          <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                            <span style={{
+                              fontSize: 10, padding: "3px 9px", borderRadius: 20, fontWeight: 600,
+                              background: o.status === "delivered" ? `${T.success}18` : o.status === "shipped" ? `${T.info}18` : o.status === "processing" ? `${T.brandAlt}18` : `${T.muted}18`,
+                              color:      o.status === "delivered" ? T.success      : o.status === "shipped"   ? T.info       : o.status === "processing" ? T.brandAlt      : T.muted,
+                            }}>{o.status}</span>
+                            <button onClick={() => window.open(`/api/orders/${o.id}/invoice`)} style={{ padding: '2px 5px', fontSize: '9px' }}>Inv</button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -930,6 +959,21 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
             </div>
           </>
         )}
+
+        {/* ══ SUPPLIERS ════════════════════════════════════════════════════════ */}
+        {tab === "suppliers" && <SuppliersTab apiFetch={apiFetch} T={T} />}
+
+        {/* ══ PRICE INTEL ══════════════════════════════════════════════════════ */}
+        {tab === "price intel" && <PriceIntelTab apiFetch={apiFetch} T={T} />}
+
+        {/* ══ AI REPORTS ═══════════════════════════════════════════════════════ */}
+        {tab === "ai reports" && <AIReportsTab apiFetch={apiFetch} T={T} />}
+
+        {/* ══ NOTIFICATIONS ════════════════════════════════════════════════════ */}
+        {tab === "notifications" && <NotificationsTab apiFetch={apiFetch} T={T} setCount={setLiveOrders} />}
+
+        {/* ══ SETTINGS ═════════════════════════════════════════════════════════ */}
+        {tab === "settings" && <SettingsTab T={T} setThemeName={setThemeName} themeName={themeName} />}
 
       </main>
 

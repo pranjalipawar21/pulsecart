@@ -18,6 +18,10 @@ app.use('/api/orders',    require('./routes/orders'));
 app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/sentiment', require('./routes/sentiment'));
 app.use('/api/ai',        require('./routes/ai'));
+app.use('/api/customers', require('./routes/customers'));
+app.use('/api/suppliers', require('./routes/suppliers'));
+app.use('/api/pricing', require('./routes/pricing'));
+app.use('/api/notifications', require('./routes/notifications'));
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
