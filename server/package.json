@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.2",
+    "axios": "^1.16.0",
     "bcryptjs": "^2.4.3",
+    "cheerio": "^1.2.0",
     "cors": "^2.8.5",
     "csv-parse": "^6.2.1",
     "csv-writer": "^1.6.0",

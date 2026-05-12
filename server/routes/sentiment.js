@@ -1,76 +1,89 @@
-const router = require('express').Router();
-const { requireAuth } = require('../middleware/auth');
+const axios = require('axios');
+const cheerio = require('cheerio');
+
+// ─── Scraper ──────────────────────────────────────────────────────────────────
+async function scrapeUrl(url) {
+  try {
+    const { data } = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      },
+      timeout: 10000
+    });
+    const $ = cheerio.load(data);
+    
+    // Extract Product Title
+    const title = $('#productTitle, .B_NuCI, h1.yh-title').first().text().trim();
+    
+    // Extract Reviews/Description
+    const reviews = [];
+    $('[data-hook="review-body"], ._27M-N_, .review-text').each((i, el) => {
+      if (i < 8) reviews.push($(el).text().trim());
+    });
+    
+    // Fallback: If no reviews found, get product description or bullet points
+    const fallbackText = $('#feature-bullets, #productDescription, ._2K67mX').text().trim();
+
+    return { 
+      title, 
+      scrapedText: reviews.join('\n') || fallbackText, 
+      success: !!title 
+    };
+  } catch (err) {
+    console.error('Scraping failed:', err.message);
+    return { success: false, error: err.message };
+  }
+}
 
 // ─── URL product identifier extraction ────────────────────────────────────────
 function extractProductInfo(url) {
   const u = url.trim();
-  // Amazon ASIN
   const asinMatch = u.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i);
   if (asinMatch) return { platform: 'Amazon', identifier: asinMatch[1], type: 'ASIN' };
-  // Flipkart FSN
   const fkMatch = u.match(/flipkart\.com\/([^/]+)\/p\/(itm[a-z0-9]+)/i);
   if (fkMatch) return { platform: 'Flipkart', identifier: fkMatch[2], type: 'FSN', slug: fkMatch[1].replace(/-/g, ' ') };
-  // Flipkart slug
-  const fkSlug = u.match(/flipkart\.com\/([^/?#]+)/i);
-  if (fkSlug) return { platform: 'Flipkart', identifier: fkSlug[1], type: 'slug', slug: fkSlug[1].replace(/-/g, ' ') };
-  // Meesho
-  const meeshoMatch = u.match(/meesho\.com\/([^/?#]+)/i);
-  if (meeshoMatch) return { platform: 'Meesho', identifier: meeshoMatch[1], type: 'slug', slug: meeshoMatch[1].replace(/-/g, ' ') };
-  // Myntra
-  const myntraMatch = u.match(/myntra\.com\/([^/?#]+)/i);
-  if (myntraMatch) return { platform: 'Myntra', identifier: myntraMatch[1], type: 'slug', slug: myntraMatch[1].replace(/-/g, ' ') };
-  // Generic
-  const parts = u.split('/').filter(s => s.length > 5 && !s.startsWith('http') && !s.includes('.'));
-  if (parts.length > 0) return { platform: 'Other', identifier: parts[0], type: 'slug', slug: parts[0].replace(/-/g, ' ') };
-  return { platform: 'Unknown', identifier: 'product', type: 'url', slug: 'product' };
+  return { platform: 'Other', identifier: 'product', type: 'url' };
 }
 
 // ─── POST /api/sentiment/analyze-url ──────────────────────────────────────────
-// Server-side sentiment analysis — keeps API key secure
 router.post('/analyze-url', requireAuth, async (req, res) => {
   const { url } = req.body;
-  if (!url || !url.trim()) {
-    return res.status(400).json({ error: 'URL is required' });
-  }
+  if (!url) return res.status(400).json({ error: 'URL required' });
 
   const GEMINI_KEY = process.env.GEMINI_API_KEY;
-  if (!GEMINI_KEY) {
-    return res.status(503).json({ error: 'Gemini API key not configured on server. Add GEMINI_API_KEY to server/.env' });
-  }
-
   const productInfo = extractProductInfo(url);
+  
+  // REAL SCRAPING STEP
+  const scraped = await scrapeUrl(url);
+  
+  const prompt = `You are a product sentiment analyst.
+URL: ${url}
+Scraped Title: ${scraped.title || 'Unknown'}
+Scraped Content/Reviews: 
+${scraped.scrapedText || 'No content found via scraper.'}
 
-  const prompt = `You are a product review sentiment analysis engine for Indian e-commerce.
+Task:
+${scraped.success 
+  ? "The scraper successfully found data. Use this live data to provide a precise sentiment analysis." 
+  : "The scraper was blocked or failed. Use your internal knowledge of this product (if known) or similar products in the Indian market to provide a highly realistic simulation."}
 
-I have a product URL from ${productInfo.platform}: ${url}
-Product identifier: ${productInfo.identifier}
-${productInfo.slug ? `Product slug: ${productInfo.slug}` : ''}
-
-Based on your knowledge of this actual product, analyze what real customer reviews typically say about it.
-If you do not recognize the specific product ID, use the product slug to infer the type of product (e.g., 'softspun microfiber vehicle washing cloth') and generate a highly realistic, representative sentiment analysis based on typical reviews for this exact type of product in the Indian e-commerce market.
-
-Respond ONLY with valid JSON (no markdown, no extra text):
+Respond ONLY with valid JSON:
 {
-  "product": "<actual full product name, or infer from slug if unknown>",
-  "brand": "<brand name, infer if possible>",
-  "category": "<product category>",
-  "priceRange": "<typical price range in INR>",
-  "total": <estimated number of reviews, realistic 50-500>,
-  "positive": <count>,
-  "neutral": <count>,
-  "negative": <count>,
-  "avgRating": <1.0-5.0>,
-  "avgScore": <-1.0 to 1.0>,
+  "product": "${scraped.title || 'Product name'}",
+  "isLiveScraped": ${scraped.success},
+  "sentimentScore": 0, 
+  "overallSentiment": "Positive/Neutral/Negative",
   "aspects": [
-    { "aspect": "<aspect>", "sentiment": "positive"|"neutral"|"negative", "count": <n>, "phrase": "<typical phrases>" }
+    {"name": "...", "score": 0, "sentiment": "..."}
   ],
-  "topPositive": "<representative positive review>",
-  "topNegative": "<representative negative review>",
-  "recommendation": "<actionable recommendation>",
-  "competitorComparison": "<brief competitor comparison>"
+  "topPositive": "...",
+  "topNegative": "...",
+  "recommendation": "..."
 }
 
-IMPORTANT: Provide a complete and realistic JSON response for every request. Do NOT return empty fields, zeros, or "Unknown". If the exact product is unknown, you MUST simulate a realistic response based on the product type inferred from the URL.`;
+Fill in all values realistically. Max 10 aspects.`;
 
   try {
     const response = await fetch(
@@ -80,44 +93,18 @@ IMPORTANT: Provide a complete and realistic JSON response for every request. Do 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 1200, temperature: 0.3 },
+          generationConfig: { temperature: 0.2 },
         }),
       }
     );
 
-    if (!response.ok) {
-      throw new Error(`Gemini API returned ${response.status}`);
-    }
-
     const data = await response.json();
-    const raw = data.candidates?.[0]?.content?.parts?.map(p => p.text).join('').trim() || '{}';
-    const cleaned = raw.replace(/```json|```/g, '').trim();
-    const result = JSON.parse(cleaned);
-    const finalData = {
-      ...result,
-      url,
-      platform: productInfo.platform,
-      identifier: productInfo.identifier,
-      analyzedAt: new Date().toISOString(),
-    };
-
-    // Save to MySQL history if available
-    const { isAvailable, getPool } = require('../db');
-    if (isAvailable()) {
-      try {
-        await getPool().execute(
-          'INSERT INTO sentiment_history (url, platform, identifier, result_json) VALUES (?, ?, ?, ?)',
-          [url, productInfo.platform, productInfo.identifier, JSON.stringify(finalData)]
-        );
-      } catch (dbErr) {
-        console.warn('Failed to save sentiment history to DB:', dbErr.message);
-      }
-    }
-
-    res.json(finalData);
+    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    const result = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    
+    res.json({ ...result, url, analyzedAt: new Date().toISOString() });
   } catch (err) {
-    console.error('Sentiment analysis error:', err.message);
-    res.status(500).json({ error: 'Sentiment analysis failed', detail: err.message });
+    res.status(500).json({ error: 'Analysis failed', detail: err.message });
   }
 });
 // ─── POST /api/sentiment/analyze-text ─────────────────────────────────────────

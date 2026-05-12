@@ -356,38 +356,61 @@ export default function Sentiment({ T, apiFetch }) {
             />
             <button onClick={async () => {
               setLoading(true);
-              const prompt = `You are a retail analytics AI. A store manager pasted this product URL: ${url}
-Simulate realistic sentiment analysis from 100 reviews.
-Respond ONLY with JSON:
-{
-  "productName": "...",
-  "sentimentScore": 85,
-  "overallSentiment": "Positive",
-  "aspects": [
-    {"name": "Build Quality", "score": 90, "sentiment": "Excellent"},
-    {"name": "Value", "score": 80, "sentiment": "Good"}
-  ]
-}`;
-              const res = await apiFetch('/api/ai/query', { method: 'POST', body: JSON.stringify({ prompt }) });
-              const data = await res.json();
-              setAiResult(JSON.parse(data.result));
+              try {
+                const res = await apiFetch('/api/sentiment/analyze-url', { 
+                  method: 'POST', 
+                  body: JSON.stringify({ url }) 
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                setAiResult(data);
+              } catch (err) {
+                alert("Scraping/Analysis failed: " + err.message);
+              }
               setLoading(false);
-            }} disabled={loading}>
+            }} disabled={loading || !url}>
               {loading ? 'Analyzing...' : 'Deep Scan'}
             </button>
           </div>
           {aiResult && (
             <div style={{ marginTop: '20px', padding: '15px', background: T.dimmed, borderRadius: '8px' }}>
-              <h4>{aiResult.productName}</h4>
-              <p>Overall: <b style={{ color: T.success }}>{aiResult.overallSentiment} ({aiResult.sentimentScore}%)</b></p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h4 style={{ margin: 0 }}>{aiResult.product}</h4>
+                <span style={{ 
+                  fontSize: '9px', 
+                  padding: '2px 6px', 
+                  borderRadius: '10px', 
+                  background: aiResult.isLiveScraped ? `${T.success}22` : `${T.info}22`,
+                  color: aiResult.isLiveScraped ? T.success : T.info,
+                  border: `1px solid ${aiResult.isLiveScraped ? T.success : T.info}44`
+                }}>
+                  {aiResult.isLiveScraped ? '✓ LIVE SCRAPED' : 'AI SIMULATED'}
+                </span>
+              </div>
+              
+              <p style={{ marginTop: '10px' }}>
+                Overall: <b style={{ color: aiResult.sentimentScore > 50 ? T.success : T.danger }}>
+                  {aiResult.overallSentiment} ({aiResult.sentimentScore}%)
+                </b>
+              </p>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px' }}>
-                {aiResult.aspects.map(a => (
+                {aiResult.aspects?.map(a => (
                   <div key={a.name} style={{ background: T.panel, padding: '10px', borderRadius: '6px' }}>
                     <div style={{ fontSize: '11px', color: T.muted }}>{a.name}</div>
-                    <div style={{ fontWeight: 700 }}>{a.score}/100 - {a.sentiment}</div>
+                    <div style={{ fontWeight: 700, color: a.sentiment === 'Positive' ? T.success : a.sentiment === 'Negative' ? T.danger : T.text }}>
+                      {a.score}/100 - {a.sentiment}
+                    </div>
                   </div>
                 ))}
               </div>
+
+              {aiResult.recommendation && (
+                <div style={{ marginTop: '15px', padding: '10px', background: T.panel, borderRadius: '6px', borderLeft: `3px solid ${T.brand}` }}>
+                  <div style={{ fontSize: '10px', color: T.brand, fontWeight: 700, textTransform: 'uppercase' }}>AI Recommendation</div>
+                  <div style={{ fontSize: '12px', marginTop: '4px' }}>{aiResult.recommendation}</div>
+                </div>
+              )}
             </div>
           )}
         </div>
