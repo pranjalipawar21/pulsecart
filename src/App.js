@@ -524,25 +524,6 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
               <KPICard label="Active Anom."     value={healthReport?.sourceMetrics?.activeAnomalies || 0} delta={0} sub="Unresolved alerts" color={T.brandAlt} icon="!" T={T} />
             </div>
 
-            {/* ... rest of the overview tab ... */}
-le={{ color: T.info }}>+{(discount * 5).toFixed(0)}%</b></span>
-                <span style={{ fontWeight: 700, color: simulatedGMV >= kpis.gmv ? T.success : T.danger }}>
-                  Simulated: {fmtINR(simulatedGMV)} {simulatedGMV >= kpis.gmv ? "▲" : "▼"}
-                </span>
-              </div>
-            </div>
-
-            {/* KPI Grid */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 22 }}>
-              <KPICard label="GMV"              value={fmtINR(kpis.gmv)}                    delta={3.8}  sub={`last ${dateRange}d`}       color={T.brand}    icon="₹" T={T} />
-              <KPICard label="Avg Order Value"  value={fmtINR(kpis.aov)}                    delta={1.2}  sub="per order"                   color={T.success}  icon="↗" T={T} />
-              <KPICard label="Conversion Rate"  value={`${kpis.convRate.toFixed(2)}%`}      delta={0.4}  sub="sessions → orders"            color={T.info}     icon="%" T={T} />
-              <KPICard label="Cart Abandonment" value={`${kpis.cartAbandRate.toFixed(1)}%`} delta={-1.1} sub="Baymard avg 70.2%"           color={T.danger}   icon="↩" T={T} />
-              <KPICard label="Net Revenue"      value={fmtINR(kpis.netRevenue)}             delta={2.9}  sub="after returns + COGS"         color={T.brandAlt} icon="₹" T={T} />
-              <KPICard label="Return Rate"      value={`${kpis.returnRate.toFixed(1)}%`}    delta={-0.6} sub="Redseer India 2024"           color={T.danger}   icon="↩" T={T} />
-              <KPICard label="Customer LTV"     value={fmtINR(kpis.ltv)}                    delta={4.1}  sub="avg per customer"             color={T.success}  icon="♾" T={T} />
-              <KPICard label="Inventory Turns"  value={`${kpis.invTurnover.toFixed(1)}x`}  delta={0.3}  sub="CRISIL benchmark"             color={T.info}     icon="↺" T={T} />
-            </div>
 
             {/* GMV Chart + Activity */}
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16, marginBottom: 16 }}>
