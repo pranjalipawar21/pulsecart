@@ -202,4 +202,83 @@ router.post('/chat', requireAuth, async (req, res) => {
   }
 });
 
+// ─── GET /api/ai/health-report ───────────────────────────────────────────────
+// Real-time business health report based on SQL data
+router.get('/health-report', requireAuth, requireOwner, async (req, res) => {
+  if (!isAvailable()) return res.json({ error: "Database offline" });
+
+  try {
+    const pool = getPool();
+    
+    // 1. Fetch Real Metrics
+    const [invStats] = await pool.execute(`
+      SELECT 
+        COUNT(CASE WHEN status = 'critical' THEN 1 END) as stockouts,
+        COUNT(CASE WHEN stock > 100 AND turnover < 5 THEN 1 END) as dead_stock,
+        AVG(turnover) as avg_turnover
+      FROM inventory
+    `);
+    
+    const [orders] = await pool.execute(`
+      SELECT 
+        SUM(amount) as revenue,
+        COUNT(*) as total_orders,
+        COUNT(CASE WHEN status = 'returned' THEN 1 END) as returns
+      FROM orders
+    `);
+
+    const [anomalies] = await pool.execute("SELECT COUNT(*) as count FROM anomaly_log WHERE resolved = 0");
+
+    const metrics = {
+      revenue: Number(orders[0].revenue || 0),
+      orderCount: orders[0].total_orders,
+      returnRate: (orders[0].returns / orders[0].total_orders * 100).toFixed(1) + '%',
+      stockouts: invStats[0].stockouts,
+      deadStockCount: invStats[0].dead_stock,
+      activeAnomalies: anomalies[0].count,
+      avgInventoryTurns: Number(invStats[0].avg_turnover || 0).toFixed(1)
+    };
+
+    const GEMINI_KEY = process.env.GEMINI_API_KEY;
+    const prompt = `You are a Chief Retail Analyst. 
+    Analyze these REAL business metrics from the PulseCart database and provide a strategic health report.
+    
+    Metrics: ${JSON.stringify(metrics)}
+    
+    Respond ONLY with JSON:
+    {
+      "healthScore": 0-100,
+      "summary": "...",
+      "riskAreas": ["...", "..."],
+      "recommendations": ["...", "..."],
+      "status": "Healthy" | "Attention Needed" | "Critical"
+    }`;
+
+    const aiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.2 },
+        }),
+      }
+    );
+
+    const data = await aiRes.json();
+    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    const report = JSON.parse(raw.replace(/```json|```/g, '').trim());
+
+    res.json({
+      ...report,
+      sourceMetrics: metrics,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Health Report Error:', err);
+    res.status(500).json({ error: 'Failed to generate health report' });
+  }
+});
+
 module.exports = router;

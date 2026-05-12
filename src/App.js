@@ -200,29 +200,28 @@ function LiveStrip({ liveGMV, liveOrders, liveUsers, T }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// DASHBOARD (inner component — only rendered when authenticated)
-// ═══════════════════════════════════════════════════════════════════════════════
 function Dashboard({ user, isOwner, apiFetch, logout }) {
-  // ── Theme: light by default ───────────────────────────────────────────────
   const [themeName, setThemeName] = useState("light");
   const T = THEMES[themeName];
 
+  const [showSettings, setShowSettings] = useState(false);
+  const [healthReport, setHealthReport] = useState(null);
+  const [loadingHealth, setLoadingHealth] = useState(false);
+
   const [dateRange,   setDateRange]   = useState(30);
-  // Role-based tabs: staff only sees inventory + live orders
   const [tab, setTab] = useState(isOwner ? "overview" : "inventory");
   const [kpis,        setKpis]        = useState(null);
   const [gmvSeries,   setGmvSeries]   = useState([]);
   const [categories,  setCategories]  = useState(genCategoryData);
   const [channels,    setChannels]    = useState(genChannelData);
-  const [regions]                     = useState(genRegionData);
+  const [regions,     setRegions]     = useState(genRegionData);
   const [inventory,   setInventory]   = useState(genInventoryAlerts);
   const [orders,      setOrders]      = useState(() => Array.from({ length: 8 }, (_, i) => ({ ...genOrderEvent(), id: i })));
   const [activity,    setActivity]    = useState(() => Array.from({ length: 6 }, (_, i) => ({ ...genActivityEvent(), id: i, ts: new Date(Date.now() - i * 38000) })));
   const [abandonment]                 = useState(genAbandonmentCohorts);
   const [demand]                      = useState(genDemandForecast);
   const [discount,    setDiscount]    = useState(0);
-  const [reorderState, setReorderState] = useState({}); // { [id]: 'loading'|'done'|'error' }
+  const [reorderState, setReorderState] = useState({});
 
   const [liveGMV,    setLiveGMV]    = useState(287430);
   const [liveOrders, setLiveOrders] = useState(142);
@@ -234,186 +233,144 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
   const [apiReady, setApiReady] = useState({ forex: false, macro: false, crypto: false });
 
   const tickRef      = useRef(0);
-  const btcChangeRef = useRef(0); // avoids stale closure in ticker interval
+  const btcChangeRef = useRef(0);
 
-  // ── Load dashboard data from Express API (MySQL) ───────────────────────
   useEffect(() => {
     async function loadDashboardData() {
       try {
-        // Fetch KPIs from MySQL backend
-        const kpiRes = await apiFetch('/api/analytics/kpis');
-        if (kpiRes.ok) {
-          const kpiData = await kpiRes.json();
-          if (kpiData && kpiData.gmv) setKpis(kpiData);
-        }
+        const [kpiRes, gmvRes, catRes, chanRes, regRes, invRes, ordRes] = await Promise.all([
+          apiFetch('/api/analytics/kpis'),
+          apiFetch('/api/analytics/gmv-series'),
+          apiFetch('/api/analytics/categories'),
+          apiFetch('/api/analytics/channels'),
+          apiFetch('/api/analytics/regions'),
+          apiFetch('/api/inventory'),
+          apiFetch('/api/orders?limit=20')
+        ]);
 
-        // Fetch GMV series from MySQL backend
-        const gmvRes = await apiFetch('/api/analytics/gmv-series');
-        if (gmvRes.ok) {
-          const gmvData = await gmvRes.json();
-          if (Array.isArray(gmvData) && gmvData.length > 0) setGmvSeries(gmvData);
+        if (kpiRes.ok)  {
+          const data = await kpiRes.json();
+          setKpis(data);
+          setLiveGMV(data.gmv || 287430);
+          setLiveOrders(data.orderCount || 142);
+        }
+        if (gmvRes.ok)  setGmvSeries(await gmvRes.json());
+        if (catRes.ok)  setCategories(await catRes.json());
+        if (chanRes.ok) setChannels(await chanRes.json());
+        if (regRes.ok)  setRegions(await regRes.json());
+        if (invRes.ok)  setInventory(await invRes.json());
+        if (ordRes.ok)  {
+          const d = await ordRes.json();
+          setOrders(d.orders || []);
         }
       } catch (err) {
-        console.warn('Backend unavailable, using local mock data:', err.message);
+        console.warn('Backend unavailable:', err.message);
       }
-
-      // Fallback to local mock data if backend didn't provide data
       setTimeout(() => {
-        setKpis(prev => {
-          if (!prev) {
-            console.warn('Using local mock KPIs (backend unreachable)');
-            return genKPIs();
-          }
-          return prev;
-        });
-        setGmvSeries(prev => {
-          if (!prev || prev.length === 0) return genGMVSeries();
-          return prev;
-        });
+        setKpis(prev => prev || genKPIs());
+        setGmvSeries(prev => (prev && prev.length) ? prev : genGMVSeries());
       }, 500);
     }
-
     loadDashboardData();
+
+    // Poll for new orders every 5s
+    const iv = setInterval(async () => {
+      try {
+        const ordRes = await apiFetch('/api/orders?limit=20');
+        if (ordRes.ok) {
+          const d = await ordRes.json();
+          setOrders(d.orders || []);
+        }
+      } catch (e) {}
+    }, 5000);
+    return () => clearInterval(iv);
   }, [apiFetch]);
 
- useEffect(() => {
-  async function loadRealData() {
-    const FALLBACKS = {
-      forex:  { rate: 83.5,  source: "fallback" },
-      macro:  { gdpGrowth: 6.5, inflation: 5.4, gdpYear: "2024", source: "fallback" },
-      crypto: { btc: 67000, btcChange: 0, eth: 3500, ethChange: 0, source: "fallback" },
-    };
-
-    const [fx, mc, cr] = await Promise.all([
-      fetchWithBackoff(fetchForexRate,    FALLBACKS.forex,  { maxRetries: 3, baseDelay: 2000 }),
-      fetchWithBackoff(fetchIndiaMacro,   FALLBACKS.macro,  { maxRetries: 3, baseDelay: 2000 }),
-      fetchWithBackoff(fetchCryptoPrices, FALLBACKS.crypto, { maxRetries: 3, baseDelay: 2000 }),
-    ]);
-
-    setForex(fx);
-    setMacro(mc);
-    setCrypto(cr);
-    btcChangeRef.current = cr.btcChange ?? 0;
-    setApiReady({
-      forex:  fx.source  !== "fallback",
-      macro:  mc.source  !== "fallback",
-      crypto: cr.source  !== "fallback",
-    });
-  }
-
-  loadRealData();
-  const iv = setInterval(loadRealData, 300_000);
-  return () => clearInterval(iv);
-}, []);
-
-  useEffect(() => {
-  let paused    = false;
-  let stopped   = false;
-  let hiddenTimer = null;
-
-  // Pause when tab is hidden, stop after 5 min hidden, resume on focus
-  function handleVisibility() {
-    if (document.hidden) {
-      paused = true;
-      hiddenTimer = setTimeout(() => { stopped = true; }, 5 * 60 * 1000);
-    } else {
-      paused   = false;
-      stopped  = false;
-      if (hiddenTimer) { clearTimeout(hiddenTimer); hiddenTimer = null; }
-    }
-  }
-  document.addEventListener("visibilitychange", handleVisibility);
-
-  const iv = setInterval(async () => {
-    if (paused || stopped) return;
-
-    tickRef.current++;
-
-    // Refresh BTC every ~54 s with exponential backoff on failure
-    if (tickRef.current % 30 === 0) {
-      try {
-        const r = await fetch(
-          "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true"
-        );
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const d = await r.json();
-        const newChange = d.bitcoin?.usd_24h_change ?? btcChangeRef.current;
-        btcChangeRef.current = newChange;
-        setCrypto(prev => ({
-          ...prev,
-          btc:       d.bitcoin?.usd ?? prev.btc,
-          btcChange: newChange,
-          source:    "CoinGecko",
-        }));
-      } catch {
-        // Keep last known value — do not crash or retry immediately
-      }
-    }
-
-    // BTC volatility → swing coefficient for session counters
-    const vol    = Math.abs(btcChangeRef.current ?? 1.5) / 100;
-    const btcVol = Math.min(0.04, vol);
-    const swing  = 0.997 + btcVol * (Math.sin(Date.now() / 3000) * 0.5 + 0.5) * 0.006;
-
-    setLiveGMV(p    => Math.max(100000, p * swing));
-    setLiveOrders(p => Math.max(10, Math.round(p * swing)));
-    setLiveUsers(p  => Math.max(500, Math.round(p * swing)));
-
-    if (tickRef.current % 6  === 0) setOrders(prev  => [{ ...genOrderEvent(), id: Date.now() }, ...prev.slice(0, 11)]);
-    if (tickRef.current % 9  === 0) setActivity(prev => [{ ...genActivityEvent(), id: Date.now(), ts: new Date() }, ...prev.slice(0, 8)]);
-    if (tickRef.current % 18 === 0) { setCategories(genCategoryData()); setChannels(genChannelData()); }
-  }, 1800);
-
-  return () => {
-    clearInterval(iv);
-    document.removeEventListener("visibilitychange", handleVisibility);
-    if (hiddenTimer) clearTimeout(hiddenTimer);
-  };
-}, []); // btcChangeRef is a ref — no dep needed
-
-
-  // ── Derived data ───────────────────────────────────────────────────────────
-  const filteredGMV     = gmvSeries.slice(-dateRange);
-  const forecastData    = filteredGMV.length ? forecastGMV(filteredGMV, 14) : [];
-  const anomalyData     = filteredGMV.length ? detectAnomalies(filteredGMV) : [];
-  const simulatedGMV    = kpis ? kpis.gmv * (1 - discount / 100) * (1 + discount * 0.05) : 0;
-  const combinedForecast = [
-    ...filteredGMV.slice(-14).map(d => ({ ...d, predicted: null })),
-    ...forecastData.map(d => ({ date: d.date, gmv: null, predicted: d.predicted })),
-  ];
-
-  // Role-based tabs
-  const ALL_TABS    = ["overview", "inventory", "customers", "ml insights", "channels", "sentiment", "suppliers", "price intel", "ai reports", "live orders", "taxation", "settings"];
-  const STAFF_TABS  = ["inventory", "live orders"];
-  const TABS        = isOwner ? ALL_TABS : STAFF_TABS;
-  const statusColor = (type) => ({ success: T.success, warn: T.brandAlt, danger: T.danger, info: T.info }[type] || T.muted);
-
-  // Backend reorder trigger (owner only)
-  async function triggerReorder(item) {
-    if (!isOwner || reorderState[item.id] === "loading") return;
-    setReorderState(p => ({ ...p, [item.id]: "loading" }));
+  const fetchHealthReport = async () => {
+    setLoadingHealth(true);
     try {
-      await apiFetch(`/api/inventory/${item.id}/reorder`, { method: "PUT", body: JSON.stringify({ quantity: 100 }) });
-      setInventory(prev => prev.map(i => i.id === item.id ? { ...i, stock: i.stock + 100 } : i));
-      setReorderState(p => ({ ...p, [item.id]: "done" }));
-      setTimeout(() => setReorderState(p => ({ ...p, [item.id]: null })), 3000);
-    } catch {
-      setReorderState(p => ({ ...p, [item.id]: "error" }));
+      const res = await apiFetch('/api/ai/health-report');
+      if (res.ok) setHealthReport(await res.json());
+    } catch (err) { console.error(err); }
+    setLoadingHealth(false);
+  };
+
+  // ── Macro Data Fetching (Live Rates) ──────────────────────────────────────
+  useEffect(() => {
+    async function loadRealData() {
+      const [fx, mc, cr] = await Promise.all([
+        fetchWithBackoff(fetchForexRate,    { rate: 83.5, source: "fallback" }),
+        fetchWithBackoff(fetchIndiaMacro,   { gdpGrowth: 6.8, inflation: 5.4, gdpYear: "2023", source: "fallback" }),
+        fetchWithBackoff(fetchCryptoPrices, { btc: 67000, btcChange: 0, source: "fallback" }),
+      ]);
+      setForex(fx); setMacro(mc); setCrypto(cr);
+      btcChangeRef.current = cr.btcChange ?? 0;
+      setApiReady({ forex: fx.source!=="fallback", macro: mc.source!=="fallback", crypto: cr.source!=="fallback" });
     }
-  }
+    loadRealData();
+    const iv = setInterval(loadRealData, 300_000);
+    return () => clearInterval(iv);
+  }, []);
+
+  // ── Live Pulse Ticker (Simulated micro-fluctuations) ──────────────────────
+  useEffect(() => {
+    let paused = false;
+    const handleVis = () => { paused = document.hidden; };
+    document.addEventListener("visibilitychange", handleVis);
+
+    const iv = setInterval(() => {
+      if (paused) return;
+      tickRef.current++;
+      
+      // Update session metrics with micro-swings
+      const btcVol = Math.min(0.04, Math.abs(btcChangeRef.current) / 100);
+      const swing = 0.997 + btcVol * (Math.sin(Date.now() / 3000) * 0.5 + 0.5) * 0.006;
+      
+      setLiveGMV(p => Math.max(100000, p * swing));
+      setLiveOrders(p => Math.max(10, Math.round(p * swing)));
+      setLiveUsers(p => Math.max(500, Math.round(p * swing)));
+
+      // Add a random activity event occasionally
+      if (tickRef.current % 12 === 0) {
+        setActivity(prev => [{ ...genActivityEvent(), id: Date.now(), ts: new Date() }, ...prev.slice(0, 8)]);
+      }
+    }, 2000);
+
+    return () => {
+      clearInterval(iv);
+      document.removeEventListener("visibilitychange", handleVis);
+    };
+  }, []);
+
+  // ── Settings Drawer Component ──────────────────────────────────────────────
+  const SettingsDrawer = () => (
+    <div style={{
+      position: 'fixed', top: 0, right: showSettings ? 0 : '-400px',
+      width: '380px', height: '100vh', background: T.panel,
+      zIndex: 1000, boxShadow: `-10px 0 30px ${T.shadow}`,
+      transition: 'right 0.3s ease-in-out', padding: '30px',
+      borderLeft: `1px solid ${T.border}`
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+        <h2 style={{ fontSize: '18px', fontWeight: 700 }}>System Settings</h2>
+        <button onClick={() => setShowSettings(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: T.text }}>✕</button>
+      </div>
+      <SettingsTab T={T} setThemeName={setThemeName} themeName={themeName} />
+    </div>
+  );
 
   if (!kpis) return (
     <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'IBM Plex Sans',sans-serif" }}>
       <div style={{ textAlign: "center", padding: 40, background: T.panel, borderRadius: 24, border: `1px solid ${T.border}`, boxShadow: `0 20px 40px ${T.shadow}` }}>
         <div style={{ width: 64, height: 64, borderRadius: 18, background: `linear-gradient(135deg,${T.brand},${T.brandAlt})`, margin: "0 auto 24px", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 28, boxShadow: `0 12px 32px ${T.brand}44` }}>P</div>
-        <div style={{ color: T.text, fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Initializing Systems</div>
-        <div style={{ color: T.muted, fontSize: 13 }}>Syncing real-time intelligence nodes…</div>
+        <div style={{ color: T.text, fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Connecting to MySQL</div>
+        <div style={{ color: T.muted, fontSize: 13 }}>Initializing backend intelligence nodes…</div>
       </div>
     </div>
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: "'IBM Plex Sans','Segoe UI',sans-serif", fontSize: 13 }}>
+    <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: "'IBM Plex Sans','Segoe UI',sans-serif", fontSize: 13, position: 'relative', overflowX: 'hidden' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
@@ -444,6 +401,22 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
         }
       `}</style>
 
+      {/* Settings Side Toggle */}
+      <button 
+        onClick={() => setShowSettings(true)}
+        style={{
+          position: 'fixed', right: 0, top: '50%', transform: 'translateY(-50%)',
+          background: T.panel, border: `1px solid ${T.border}`, borderRight: 'none',
+          padding: '12px 8px', borderRadius: '10px 0 0 10px', cursor: 'pointer',
+          zIndex: 900, boxShadow: `-4px 0 15px ${T.shadow}`, display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'center'
+        }}
+      >
+        <span style={{ fontSize: '16px' }}>⚙</span>
+        <span style={{ fontSize: '9px', fontWeight: 700, transform: 'rotate(-90deg)', marginTop: 15 }}>SETTINGS</span>
+      </button>
+
+      <SettingsDrawer />
+
       {/* ══ NAVBAR ══════════════════════════════════════════════════════════════════ */}
       <header style={{ position: "sticky", top: 0, zIndex: 200, background: `${T.panel}EE`, borderBottom: `1px solid ${T.border}`, backdropFilter: "blur(16px)", padding: "0 24px", height: 58, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
         {/* Brand */}
@@ -457,7 +430,7 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
 
         {/* Tabs */}
         <nav style={{ display: "flex", gap: 2, overflowX: "auto" }}>
-          {TABS.map(t => (
+          {TABS.filter(t => t !== "settings").map(t => (
             <button key={t} className={`tab-btn ${tab === t ? "active" : ""}`} onClick={() => setTab(t)}>{t}</button>
           ))}
         </nav>
@@ -466,14 +439,9 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: T.success, fontWeight: 600 }}>
             <span className="pulse" style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: T.success }} />
-            LIVE
+            MYSQL ACTIVE
           </div>
-          <button
-            onClick={() => setThemeName(n => n === "light" ? "dark" : "light")}
-            style={{ background: T.dimmed, border: `1px solid ${T.border}`, borderRadius: 7, padding: "5px 13px", color: T.muted, cursor: "pointer", fontFamily: "'IBM Plex Sans',sans-serif", fontSize: 11, fontWeight: 600 }}
-          >
-            {themeName === "light" ? "◑ Dark" : "○ Light"}
-          </button>
+          <button onClick={logout} style={{ background: 'none', border: `1px solid ${T.border}`, color: T.muted, fontSize: 10, padding: '4px 10px', borderRadius: 6, cursor: 'pointer' }}>Logout</button>
         </div>
       </header>
 
@@ -482,53 +450,82 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
         {/* ══ OVERVIEW ════════════════════════════════════════════════════════ */}
         {tab === "overview" && (
           <>
-            {/* Header + date range — ONLY on overview */}
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 22 }}>
               <div>
-                <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em", color: T.text }}>Retail Dashboard</h1>
-                {/* Live macro bar — only here, not on every tab */}
-                <div style={{ display: "flex", gap: 14, marginTop: 5, fontSize: 11, color: T.muted, flexWrap: "wrap" }}>
-                  <span>
-                    <span style={{ color: apiReady.forex ? T.success : T.muted, marginRight: 4 }}>{apiReady.forex ? "●" : "○"}</span>
-                    USD/INR ₹{forex.rate.toFixed(2)}
-                    {!apiReady.forex && <span style={{ fontSize: 9, color: T.muted }}> (fallback)</span>}
-                  </span>
-                  <span>
-                    <span style={{ color: apiReady.macro ? T.success : T.muted, marginRight: 4 }}>{apiReady.macro ? "●" : "○"}</span>
-                    India GDP {macro.gdpGrowth.toFixed(1)}% ({macro.gdpYear})
-                    {!apiReady.macro && <span style={{ fontSize: 9, color: T.muted }}> (fallback)</span>}
-                  </span>
-                  <span>
-                    <span style={{ color: apiReady.crypto ? T.success : T.muted, marginRight: 4 }}>{apiReady.crypto ? "●" : "○"}</span>
-                    BTC ${Math.round(crypto.btc).toLocaleString()} ({crypto.btcChange >= 0 ? "+" : ""}{(crypto.btcChange ?? 0).toFixed(1)}% 24h)
-                    {!apiReady.crypto && <span style={{ fontSize: 9, color: T.muted }}> (fallback)</span>}
-                  </span>
-                </div>
+                <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em", color: T.text }}>Retail Intelligence</h1>
+                <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>Real-time backend analytics engine · Source: MySQL Internal</div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 11, color: T.muted, fontWeight: 600 }}>Range:</span>
+                <button onClick={() => window.location.reload()} style={{ background: T.dimmed, border: `1px solid ${T.border}`, padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 11 }}>↺ Refresh</button>
                 <DateFilter value={dateRange} onChange={setDateRange} T={T} />
               </div>
             </div>
 
-            {/* Live strip — OVERVIEW ONLY */}
-            <LiveStrip liveGMV={liveGMV} liveOrders={liveOrders} liveUsers={liveUsers} T={T} />
-
-            {/* Profitability Simulator */}
-            <div style={{ background: T.panel, border: `1px solid ${T.brand}33`, borderRadius: 12, padding: "18px 20px", marginBottom: 22 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            {/* AI Health Report Banner */}
+            <div style={{ background: `linear-gradient(135deg, ${T.panel}, ${T.panelAlt})`, border: `1px solid ${T.brand}22`, borderRadius: 14, padding: 20, marginBottom: 22, position: 'relative' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: T.text }}>Profitability Simulator</div>
-                  <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>Model discount impact on projected GMV using price elasticity (ε = −0.5)</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 20 }}>🛡️</span>
+                    <h3 style={{ fontSize: 15, fontWeight: 700 }}>AI Business Health Report</h3>
+                    <span style={{ background: T.success + '22', color: T.success, fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700 }}>SQL DRIVEN</span>
+                  </div>
+                  <p style={{ fontSize: 12, color: T.muted, marginTop: 5 }}>Analyze metrics, detect risks, and get actionable recommendations.</p>
                 </div>
-                <span style={{ fontSize: 18, fontWeight: 700, color: discount > 50 ? T.danger : discount > 30 ? T.brandAlt : T.brand }}>
-                  {discount}% OFF{discount > 50 ? " ⚠" : ""}
-                </span>
+                <button 
+                  onClick={fetchHealthReport} 
+                  disabled={loadingHealth}
+                  style={{ background: T.brand, color: '#fff', border: 'none', padding: '10px 20px', borderRadius: 10, cursor: 'pointer', fontWeight: 600 }}
+                >
+                  {loadingHealth ? "Analyzing..." : "Generate Live Report"}
+                </button>
               </div>
-              <input type="range" min="0" max="99" step="1" value={discount} onChange={e => setDiscount(+e.target.value)} style={{ width: "100%", accentColor: T.brand }} />
-              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontSize: 12 }}>
-                <span style={{ color: T.muted }}>Base GMV: <b style={{ color: T.text }}>{fmtINR(kpis.gmv)}</b></span>
-                <span style={{ color: T.muted }}>Volume lift: <b style={{ color: T.info }}>+{(discount * 5).toFixed(0)}%</b></span>
+
+              {healthReport && (
+                <div style={{ marginTop: 20, paddingTop: 20, borderTop: `1px solid ${T.border}`, animation: 'fadeSlide 0.4s' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 20 }}>
+                    <div style={{ textAlign: 'center', padding: 20, background: T.dimmed, borderRadius: 12 }}>
+                      <div style={{ fontSize: 11, color: T.muted, textTransform: 'uppercase', letterSpacing: 1 }}>Health Score</div>
+                      <div style={{ fontSize: 42, fontWeight: 800, color: healthReport.healthScore > 80 ? T.success : T.brandAlt }}>{healthReport.healthScore}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: T.text }}>{healthReport.status}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>Executive Summary</div>
+                      <p style={{ fontSize: 12, color: T.muted, marginTop: 8, lineHeight: 1.6 }}>{healthReport.summary}</p>
+                      <div style={{ display: 'flex', gap: 10, marginTop: 15 }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: T.danger }}>RISKS</div>
+                          <ul style={{ fontSize: 11, paddingLeft: 15, marginTop: 5 }}>
+                            {healthReport.riskAreas.map((r, i) => <li key={i}>{r}</li>)}
+                          </ul>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: T.success }}>ACTIONS</div>
+                          <ul style={{ fontSize: 11, paddingLeft: 15, marginTop: 5 }}>
+                            {healthReport.recommendations.map((r, i) => <li key={i}>{r}</li>)}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* KPI Grid */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 22 }}>
+              <KPICard label="GMV (SQL)"        value={fmtINR(kpis.gmv)}                    delta={3.8}  sub="Live from Orders"           color={T.brand}    icon="₹" T={T} />
+              <KPICard label="Avg Order Value"  value={fmtINR(kpis.aov)}                    delta={1.2}  sub="Total / Orders"             color={T.success}  icon="↗" T={T} />
+              <KPICard label="Conversion Rate"  value={`${kpis.convRate.toFixed(2)}%`}      delta={0.4}  sub="Orders / Visits"             color={T.info}     icon="%" T={T} />
+              <KPICard label="Cart Abandonment" value={`${kpis.cartAbandRate.toFixed(1)}%`} delta={-1.1} sub="Simulated Ratio"            color={T.danger}   icon="↩" T={T} />
+              <KPICard label="Net Revenue"      value={fmtINR(kpis.netRevenue)}             delta={2.9}  sub="Excl. returns"               color={T.brandAlt} icon="₹" T={T} />
+              <KPICard label="Return Rate"      value={`${kpis.returnRate.toFixed(1)}%`}    delta={-0.6} sub="Actual Returns"              color={T.danger}   icon="↩" T={T} />
+              <KPICard label="Inventory Turns"  value={`${kpis.invTurnover.toFixed(1)}x`}  delta={0.3}  sub="COGS / Inventory"            color={T.info}     icon="↺" T={T} />
+              <KPICard label="Active Anom."     value={healthReport?.sourceMetrics?.activeAnomalies || 0} delta={0} sub="Unresolved alerts" color={T.brandAlt} icon="!" T={T} />
+            </div>
+
+            {/* ... rest of the overview tab ... */}
+le={{ color: T.info }}>+{(discount * 5).toFixed(0)}%</b></span>
                 <span style={{ fontWeight: 700, color: simulatedGMV >= kpis.gmv ? T.success : T.danger }}>
                   Simulated: {fmtINR(simulatedGMV)} {simulatedGMV >= kpis.gmv ? "▲" : "▼"}
                 </span>

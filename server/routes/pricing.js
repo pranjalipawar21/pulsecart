@@ -1,26 +1,39 @@
 const router = require('express').Router();
-const { getPool } = require('../db');
-const { requireAuth } = require('../middleware/auth');
+const { getPool, isAvailable } = require('../db');
+const { requireAuth, requireOwner } = require('../middleware/auth');
 
-// GET /api/competitor-prices
-router.get('/', requireAuth, async (req, res) => {
+// GET /api/pricing/analysis
+router.get('/analysis', requireAuth, requireOwner, async (req, res) => {
+  if (!isAvailable()) return res.json([]);
+  
   try {
-    const [rows] = await getPool().execute('SELECT * FROM competitor_prices ORDER BY last_updated DESC');
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// PUT /api/competitor-prices/:sku
-router.put('/:sku', requireAuth, async (req, res) => {
-  const { amazon, flipkart, croma, reliance } = req.body;
-  try {
-    await getPool().execute(
-      'UPDATE competitor_prices SET amazon=?, flipkart=?, croma=?, reliance=?, last_updated=NOW() WHERE sku=?',
-      [amazon, flipkart, croma, reliance, req.params.sku]
-    );
-    res.json({ success: true });
+    const pool = getPool();
+    const [rows] = await pool.execute(`
+      SELECT 
+        i.sku, 
+        i.product as product_name, 
+        i.price as our_price, 
+        ph.mrp, 
+        ph.platform,
+        ph.current_price as market_price,
+        ((ph.mrp - i.price) / ph.mrp * 100) as our_discount,
+        CASE 
+          WHEN i.price > ph.current_price THEN 'Overpriced'
+          WHEN i.price < ph.current_price * 0.9 THEN 'Underpriced'
+          ELSE 'Competitive'
+        END as status
+      FROM inventory i
+      LEFT JOIN price_history ph ON i.id = ph.product_id
+      ORDER BY status DESC
+    `);
+    
+    const analysis = rows.map(r => ({
+      ...r,
+      suggested_action: r.status === 'Overpriced' ? 'Reduce price by 5%' : 
+                        r.status === 'Underpriced' ? 'Maintain or slightly increase' : 'Monitor trends'
+    }));
+    
+    res.json(analysis);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
