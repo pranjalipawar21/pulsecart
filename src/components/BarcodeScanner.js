@@ -31,7 +31,7 @@ const BarcodeScanner = ({ onScanSuccess }) => {
   }, [onScanSuccess]);
 
   return (
-    <div style={{ maxWidth: '500px', margin: '0 auto' }}>
+    <div style={{ width: '100%', margin: '0' }}>
       <h2 style={{ textAlign: 'center' }}>Scan SKU Barcode</h2>
       {scanResult ? (
         <div style={{ textAlign: 'center', padding: '20px', background: '#d1fae5', borderRadius: '8px' }}>

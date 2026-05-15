@@ -4,7 +4,9 @@ const { requireAuth, requireOwner } = require('../middleware/auth');
 
 // GET /api/pricing/analysis
 router.get('/analysis', requireAuth, requireOwner, async (req, res) => {
-  if (!isAvailable()) return res.json([]);
+  if (!isAvailable()) {
+    return res.json({ success: false, data: [], error: 'Database unavailable' });
+  }
   
   try {
     const pool = getPool();
@@ -27,15 +29,15 @@ router.get('/analysis', requireAuth, requireOwner, async (req, res) => {
       ORDER BY status DESC
     `);
     
-    const analysis = rows.map(r => ({
+    const data = rows.map(r => ({
       ...r,
       suggested_action: r.status === 'Overpriced' ? 'Reduce price by 5%' : 
                         r.status === 'Underpriced' ? 'Maintain or slightly increase' : 'Monitor trends'
     }));
     
-    res.json(analysis);
+    res.json({ success: true, data });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, data: [], error: err.message });
   }
 });
 

@@ -148,8 +148,8 @@ export default function Login() {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {[
-              { r: "owner", label: "Owner",  icon: "👑", desc: "Full analytics access" },
-              { r: "staff", label: "Staff",  icon: "🛍️", desc: "Inventory & orders" },
+              { r: "owner", label: "Owner Dashboard",  icon: "👤", desc: "Full analytics access" },
+              { r: "staff", label: "Staff Dashboard",  icon: "👥", desc: "Inventory & orders" },
             ].map(({ r, label, icon, desc }) => (
               <button
                 key={r} className="role-btn"

@@ -201,12 +201,18 @@ function LiveStrip({ liveGMV, liveOrders, liveUsers, T }) {
 }
 
 function Dashboard({ user, isOwner, apiFetch, logout }) {
-  const [themeName, setThemeName] = useState("light");
+  const [themeName, setThemeName] = useState(() => localStorage.getItem("theme") || "light");
   const T = THEMES[themeName];
+
+  useEffect(() => {
+    localStorage.setItem("theme", themeName);
+    document.body.style.background = T.bg;
+  }, [themeName, T.bg]);
 
   const [showSettings, setShowSettings] = useState(false);
   const [healthReport, setHealthReport] = useState(null);
   const [loadingHealth, setLoadingHealth] = useState(false);
+  const [invoiceModal, setInvoiceModal] = useState(null); // { invoice } object or null
 
   const [dateRange,   setDateRange]   = useState(30);
   const [tab, setTab] = useState(isOwner ? "overview" : "inventory");
@@ -216,21 +222,16 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
   const [channels,    setChannels]    = useState(genChannelData);
   const [regions,     setRegions]     = useState(genRegionData);
   const [inventory,   setInventory]   = useState(genInventoryAlerts);
-  const [orders,      setOrders]      = useState(() => Array.from({ length: 8 }, (_, i) => ({ ...genOrderEvent(), id: i })));
+  const [orders,      setOrders]      = useState([]);
   const [activity,    setActivity]    = useState(() => Array.from({ length: 6 }, (_, i) => ({ ...genActivityEvent(), id: i, ts: new Date(Date.now() - i * 38000) })));
   const [abandonment]                 = useState(genAbandonmentCohorts);
   const [demand]                      = useState(genDemandForecast);
   const [discount,    setDiscount]    = useState(0);
   const [reorderState, setReorderState] = useState({});
 
-  const [liveGMV,    setLiveGMV]    = useState(287430);
-  const [liveOrders, setLiveOrders] = useState(142);
-  const [liveUsers,  setLiveUsers]  = useState(4821);
-
-  const [forex,    setForex]    = useState({ rate: 83.5,  source: "loading" });
-  const [macro,    setMacro]    = useState({ gdpGrowth: 6.8, inflation: 5.4, gdpYear: "2023", source: "loading" });
-  const [crypto,   setCrypto]   = useState({ btc: 67000, btcChange: 0, source: "loading" });
-  const [apiReady, setApiReady] = useState({ forex: false, macro: false, crypto: false });
+  const [liveGMV,    setLiveGMV]    = useState(0);
+  const [liveOrders, setLiveOrders] = useState(0);
+  const [liveUsers,  setLiveUsers]  = useState(0);
 
   const tickRef      = useRef(0);
   const btcChangeRef = useRef(0);
@@ -244,32 +245,43 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
           apiFetch('/api/analytics/categories'),
           apiFetch('/api/analytics/channels'),
           apiFetch('/api/analytics/regions'),
-          apiFetch('/api/inventory'),
+          apiFetch('/api/products'),
           apiFetch('/api/orders?limit=20')
         ]);
 
         if (kpiRes.ok)  {
           const data = await kpiRes.json();
           setKpis(data);
-          setLiveGMV(data.gmv || 287430);
-          setLiveOrders(data.orderCount || 142);
+          setLiveGMV(data.gmv || 0);
+          setLiveOrders(data.orderCount || 0);
         }
-        if (gmvRes.ok)  setGmvSeries(await gmvRes.json());
-        if (catRes.ok)  setCategories(await catRes.json());
-        if (chanRes.ok) setChannels(await chanRes.json());
-        if (regRes.ok)  setRegions(await regRes.json());
-        if (invRes.ok)  setInventory(await invRes.json());
+        if (gmvRes.ok)  {
+          const d = await gmvRes.json();
+          setGmvSeries(Array.isArray(d) ? d : d.data || []);
+        }
+        if (catRes.ok)  {
+          const d = await catRes.json();
+          setCategories(Array.isArray(d) ? d : d.data || []);
+        }
+        if (chanRes.ok) {
+          const d = await chanRes.json();
+          setChannels(Array.isArray(d) ? d : d.data || []);
+        }
+        if (regRes.ok)  {
+          const d = await regRes.json();
+          setRegions(Array.isArray(d) ? d : d.data || []);
+        }
+        if (invRes.ok)  {
+          const d = await invRes.json();
+          setInventory(Array.isArray(d) ? d : d.data || []);
+        }
         if (ordRes.ok)  {
           const d = await ordRes.json();
-          setOrders(d.orders || []);
+          setOrders(d.orders || d.data || []);
         }
       } catch (err) {
         console.warn('Backend unavailable:', err.message);
       }
-      setTimeout(() => {
-        setKpis(prev => prev || genKPIs());
-        setGmvSeries(prev => (prev && prev.length) ? prev : genGMVSeries());
-      }, 500);
     }
     loadDashboardData();
 
@@ -290,8 +302,17 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
     setLoadingHealth(true);
     try {
       const res = await apiFetch('/api/ai/health-report');
-      if (res.ok) setHealthReport(await res.json());
-    } catch (err) { console.error(err); }
+      const data = await res.json();
+      if (data.success) {
+        setHealthReport(data.report || null);
+      } else {
+        console.error('Health Report failed:', data.error);
+        setHealthReport(null);
+      }
+    } catch (err) { 
+      console.error(err);
+      setHealthReport(null);
+    }
     setLoadingHealth(false);
   };
 
@@ -312,34 +333,9 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
     return () => clearInterval(iv);
   }, []);
 
-  // ── Live Pulse Ticker (Simulated micro-fluctuations) ──────────────────────
+  // ── Live Activity Feed (Empty if no backend data) ─────────────────────────
   useEffect(() => {
-    let paused = false;
-    const handleVis = () => { paused = document.hidden; };
-    document.addEventListener("visibilitychange", handleVis);
-
-    const iv = setInterval(() => {
-      if (paused) return;
-      tickRef.current++;
-      
-      // Update session metrics with micro-swings
-      const btcVol = Math.min(0.04, Math.abs(btcChangeRef.current) / 100);
-      const swing = 0.997 + btcVol * (Math.sin(Date.now() / 3000) * 0.5 + 0.5) * 0.006;
-      
-      setLiveGMV(p => Math.max(100000, p * swing));
-      setLiveOrders(p => Math.max(10, Math.round(p * swing)));
-      setLiveUsers(p => Math.max(500, Math.round(p * swing)));
-
-      // Add a random activity event occasionally
-      if (tickRef.current % 12 === 0) {
-        setActivity(prev => [{ ...genActivityEvent(), id: Date.now(), ts: new Date() }, ...prev.slice(0, 8)]);
-      }
-    }, 2000);
-
-    return () => {
-      clearInterval(iv);
-      document.removeEventListener("visibilitychange", handleVis);
-    };
+    // Ticker removed to prevent fake data generation
   }, []);
 
   // ── Settings Drawer Component ──────────────────────────────────────────────
@@ -358,6 +354,151 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
       <SettingsTab T={T} setThemeName={setThemeName} themeName={themeName} />
     </div>
   );
+
+  // ── Invoice Modal Component ────────────────────────────────────────────────
+  const InvoiceModal = () => {
+    if (!invoiceModal) return null;
+    const inv = invoiceModal;
+    const statusColor = inv.paymentStatus === 'Paid' ? T.success
+                      : inv.paymentStatus === 'Refunded' ? T.info : T.brandAlt;
+    return (
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 2000,
+        background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '20px',
+      }} onClick={() => setInvoiceModal(null)}>
+        <div
+          style={{
+            background: T.panel, borderRadius: 16, border: `1px solid ${T.border}`,
+            boxShadow: `0 24px 60px ${T.shadow}`, width: '100%', maxWidth: 560,
+            fontFamily: "'IBM Plex Sans',sans-serif", overflow: 'hidden',
+          }}
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div style={{ background: `linear-gradient(135deg,${T.brand},${T.brandAlt})`, padding: '22px 28px', color: '#fff' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: '-0.02em' }}>TAX INVOICE</div>
+                <div style={{ fontSize: 12, opacity: 0.85, marginTop: 3 }}>{inv.companyName}</div>
+                <div style={{ fontSize: 11, opacity: 0.7, marginTop: 1 }}>GSTIN: {inv.gstin}</div>
+              </div>
+              <button onClick={() => setInvoiceModal(null)} style={{
+                background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.3)',
+                borderRadius: 8, color: '#fff', padding: '6px 10px', cursor: 'pointer', fontSize: 13,
+              }}>✕ Close</button>
+            </div>
+          </div>
+
+          {/* Body */}
+          <div style={{ padding: '24px 28px' }}>
+            {/* Invoice meta */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+              <div>
+                <div style={{ fontSize: 10, color: T.muted, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>Invoice No.</div>
+                <div style={{ fontWeight: 700, color: T.brand, fontFamily: 'monospace', fontSize: 13 }}>{inv.invoiceNumber}</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 10, color: T.muted, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>Date</div>
+                <div style={{ fontWeight: 600, color: T.text, fontSize: 13 }}>{inv.date}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: T.muted, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>Bill To</div>
+                <div style={{ fontWeight: 600, color: T.text }}>{inv.customer}</div>
+                <div style={{ fontSize: 11, color: T.muted }}>{inv.region}</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 10, color: T.muted, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>Payment Status</div>
+                <span style={{
+                  fontSize: 11, padding: '3px 10px', borderRadius: 20,
+                  background: `${statusColor}18`, color: statusColor, fontWeight: 700,
+                }}>{inv.paymentStatus}</span>
+              </div>
+            </div>
+
+            {/* Line items */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16 }}>
+              <thead>
+                <tr style={{ borderBottom: `2px solid ${T.border}` }}>
+                  {['Description', 'Qty', 'Unit Price', 'Total'].map(h => (
+                    <th key={h} style={{ padding: '8px 0', textAlign: h === 'Description' ? 'left' : 'right', fontSize: 10, color: T.muted, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(inv.lineItems || []).map((item, i) => (
+                  <tr key={i} style={{ borderBottom: `1px solid ${T.dimmed}` }}>
+                    <td style={{ padding: '12px 0', color: T.text, fontSize: 13 }}>{item.description}</td>
+                    <td style={{ padding: '12px 0', textAlign: 'right', color: T.muted }}>{item.qty}</td>
+                    <td style={{ padding: '12px 0', textAlign: 'right', color: T.muted }}>₹{Number(item.unitPrice).toLocaleString('en-IN')}</td>
+                    <td style={{ padding: '12px 0', textAlign: 'right', fontWeight: 600, color: T.text }}>₹{Number(item.total).toLocaleString('en-IN')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Totals */}
+            <div style={{ background: T.dimmed, borderRadius: 10, padding: '16px 20px' }}>
+              {[
+                { label: 'Subtotal', value: inv.subtotal },
+                { label: 'CGST (9%)', value: inv.cgst },
+                { label: 'SGST (9%)', value: inv.sgst },
+              ].map(({ label, value }) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 13, color: T.muted }}>
+                  <span>{label}</span>
+                  <span>₹{Number(value).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${T.border}`, paddingTop: 12, marginTop: 4 }}>
+                <span style={{ fontWeight: 700, fontSize: 15, color: T.text }}>Grand Total</span>
+                <span style={{ fontWeight: 800, fontSize: 16, color: T.brand }}>₹{Number(inv.grandTotal).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 16, fontSize: 10, color: T.muted, textAlign: 'center' }}>
+              {inv.companyAddr} · {inv.gstin}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+  // ── Helpers & Derived State ────────────────────────────────────────────────
+  const TABS = ["overview", "inventory", "sentiment", "suppliers", "pricing", "health", "orders", "tax", "customers", "settings"];
+
+  const gmvList     = Array.isArray(gmvSeries) ? gmvSeries : (gmvSeries?.data || []);
+  const filteredGMV = gmvList.slice(-dateRange);
+
+  const statusColor = (type) => {
+    if (type === "order") return T.success;
+    if (type === "anomaly") return T.danger;
+    if (type === "reorder") return T.brandAlt;
+    return T.info;
+  };
+
+  const triggerReorder = async (item) => {
+    setReorderState(p => ({ ...p, [item.sku]: 'loading' }));
+    try {
+      const res = await apiFetch(`/api/inventory/${item.id}/reorder`, { 
+        method: 'POST',
+        body: JSON.stringify({ quantity: 50, note: 'Manual reorder from dashboard' })
+      });
+      if (res.ok) {
+        setReorderState(p => ({ ...p, [item.sku]: 'success' }));
+        setActivity(prev => [{ id: Date.now(), type: 'reorder', msg: `Reorder triggered for ${item.product}`, ts: new Date() }, ...prev]);
+      } else {
+        setReorderState(p => ({ ...p, [item.sku]: 'error' }));
+      }
+    } catch (e) {
+      setReorderState(p => ({ ...p, [item.sku]: 'error' }));
+    }
+  };
+
+  // Forecast & Anomaly logic
+  const forecastData     = (gmvList?.length > 10) ? forecastGMV(gmvList, 14) : [];
+  const combinedForecast = [...(gmvList?.slice(-20) || []), ...forecastData];
+  const anomalyData      = gmvList ? detectAnomalies(gmvList) : [];
 
   if (!kpis) return (
     <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'IBM Plex Sans',sans-serif" }}>
@@ -416,6 +557,7 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
       </button>
 
       <SettingsDrawer />
+      <InvoiceModal />
 
       {/* ══ NAVBAR ══════════════════════════════════════════════════════════════════ */}
       <header style={{ position: "sticky", top: 0, zIndex: 200, background: `${T.panel}EE`, borderBottom: `1px solid ${T.border}`, backdropFilter: "blur(16px)", padding: "0 24px", height: 58, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
@@ -437,10 +579,6 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
 
         {/* Controls */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: T.success, fontWeight: 600 }}>
-            <span className="pulse" style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: T.success }} />
-            MYSQL ACTIVE
-          </div>
           <button onClick={logout} style={{ background: 'none', border: `1px solid ${T.border}`, color: T.muted, fontSize: 10, padding: '4px 10px', borderRadius: 6, cursor: 'pointer' }}>Logout</button>
         </div>
       </header>
@@ -466,7 +604,7 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ fontSize: 20 }}>🛡️</span>
+                    <span style={{ fontSize: 20 }}>📊</span>
                     <h3 style={{ fontSize: 15, fontWeight: 700 }}>AI Business Health Report</h3>
                     <span style={{ background: T.success + '22', color: T.success, fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700 }}>SQL DRIVEN</span>
                   </div>
@@ -496,13 +634,13 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 11, fontWeight: 700, color: T.danger }}>RISKS</div>
                           <ul style={{ fontSize: 11, paddingLeft: 15, marginTop: 5 }}>
-                            {healthReport.riskAreas.map((r, i) => <li key={i}>{r}</li>)}
+                            {(healthReport.riskAreas || []).map((r, i) => <li key={i}>{r}</li>)}
                           </ul>
                         </div>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 11, fontWeight: 700, color: T.success }}>ACTIONS</div>
                           <ul style={{ fontSize: 11, paddingLeft: 15, marginTop: 5 }}>
-                            {healthReport.recommendations.map((r, i) => <li key={i}>{r}</li>)}
+                            {(healthReport.recommendations || []).map((r, i) => <li key={i}>{r}</li>)}
                           </ul>
                         </div>
                       </div>
@@ -514,13 +652,13 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
 
             {/* KPI Grid */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 22 }}>
-              <KPICard label="GMV (SQL)"        value={fmtINR(kpis.gmv)}                    delta={3.8}  sub="Live from Orders"           color={T.brand}    icon="₹" T={T} />
-              <KPICard label="Avg Order Value"  value={fmtINR(kpis.aov)}                    delta={1.2}  sub="Total / Orders"             color={T.success}  icon="↗" T={T} />
-              <KPICard label="Conversion Rate"  value={`${kpis.convRate.toFixed(2)}%`}      delta={0.4}  sub="Orders / Visits"             color={T.info}     icon="%" T={T} />
-              <KPICard label="Cart Abandonment" value={`${kpis.cartAbandRate.toFixed(1)}%`} delta={-1.1} sub="Simulated Ratio"            color={T.danger}   icon="↩" T={T} />
-              <KPICard label="Net Revenue"      value={fmtINR(kpis.netRevenue)}             delta={2.9}  sub="Excl. returns"               color={T.brandAlt} icon="₹" T={T} />
-              <KPICard label="Return Rate"      value={`${kpis.returnRate.toFixed(1)}%`}    delta={-0.6} sub="Actual Returns"              color={T.danger}   icon="↩" T={T} />
-              <KPICard label="Inventory Turns"  value={`${kpis.invTurnover.toFixed(1)}x`}  delta={0.3}  sub="COGS / Inventory"            color={T.info}     icon="↺" T={T} />
+              <KPICard label="GMV (SQL)"        value={fmtINR(kpis.gmv || 0)}                    delta={3.8}  sub="Live from Orders"           color={T.brand}    icon="₹" T={T} />
+              <KPICard label="Avg Order Value"  value={fmtINR(kpis.aov || 0)}                    delta={1.2}  sub="Total / Orders"             color={T.success}  icon="↗" T={T} />
+              <KPICard label="Conversion Rate"  value={`${(kpis.convRate || 0).toFixed(2)}%`}      delta={0.4}  sub="Orders / Visits"             color={T.info}     icon="%" T={T} />
+              <KPICard label="Cart Abandonment" value={`${(kpis.cartAbandRate || 0).toFixed(1)}%`} delta={-1.1} sub="Simulated Ratio"            color={T.danger}   icon="↩" T={T} />
+              <KPICard label="Net Revenue"      value={fmtINR(kpis.netRevenue || 0)}             delta={2.9}  sub="Excl. returns"               color={T.brandAlt} icon="₹" T={T} />
+              <KPICard label="Return Rate"      value={`${(kpis.returnRate || 0).toFixed(1)}%`}    delta={-0.6} sub="Actual Returns"              color={T.danger}   icon="↩" T={T} />
+              <KPICard label="Inventory Turns"  value={`${(kpis.invTurnover || 0).toFixed(1)}x`}  delta={0.3}  sub="COGS / Inventory"            color={T.info}     icon="↺" T={T} />
               <KPICard label="Active Anom."     value={healthReport?.sourceMetrics?.activeAnomalies || 0} delta={0} sub="Unresolved alerts" color={T.brandAlt} icon="!" T={T} />
             </div>
 
@@ -813,25 +951,33 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
                   </tr>
                 </thead>
                 <tbody>
+                  {inventory.length === 0 && (
+                    <tr>
+                      <td colSpan="6" style={{ padding: "40px", textAlign: "center", color: T.muted }}>
+                        No products found. Add your first product.
+                      </td>
+                    </tr>
+                  )}
                   {inventory.map(i => (
-                    <tr key={i.product} className="row-h" style={{ borderBottom: `1px solid ${T.dimmed}`, transition: "background 0.12s" }}>
+                    <tr key={i.id} className="row-h" style={{ borderBottom: `1px solid ${T.dimmed}`, transition: "background 0.12s" }}>
                       <td style={{ padding: "12px", fontWeight: 600, color: T.text }}>{i.product}</td>
                       <td style={{ padding: "12px", color: T.muted }}>{i.location || 'Warehouse A'}</td>
                       <td style={{ padding: "12px", fontWeight: 700, color: i.stock < 20 ? T.danger : i.stock < 40 ? T.brandAlt : T.success }}>{i.stock} units</td>
                       <td style={{ padding: "12px", color: T.muted }}>{i.reorder_threshold} units</td>
                       <td style={{ padding: "12px" }}>
-                        <span style={{ background: i.status === "critical" ? `${T.danger}18` : `${T.brandAlt}18`, color: i.status === "critical" ? T.danger : T.brandAlt, fontSize: 10, padding: "3px 9px", borderRadius: 20, fontWeight: 600 }}>
-                          {i.status.toUpperCase()}
+                        <span style={{ background: i.status === "critical" ? `${T.danger}18` : i.status === "low" ? `${T.brandAlt}18` : `${T.success}18`, color: i.status === "critical" ? T.danger : i.status === "low" ? T.brandAlt : T.success, fontSize: 10, padding: "3px 9px", borderRadius: 20, fontWeight: 600 }}>
+                          {(i.status || 'healthy').toUpperCase()}
                         </span>
                       </td>
                       <td style={{ padding: "12px" }}>
                         <div style={{ display: 'flex', gap: '5px' }}>
-                          <button onClick={() => triggerReorder(i)}>⟳</button>
-                          <button onClick={async () => {
-                            const res = await apiFetch('/api/ai/product-description', { method: 'POST', body: JSON.stringify({ sku: i.sku }) });
-                            const data = await res.json();
-                            alert(data.description);
-                          }}>AI</button>
+                          <button 
+                            onClick={() => triggerReorder(i)}
+                            disabled={reorderState[i.sku] === 'loading'}
+                            style={{ background: T.brand, color: '#fff', border: 'none', borderRadius: 4, width: 28, height: 28, cursor: 'pointer' }}
+                          >
+                            {reorderState[i.sku] === 'loading' ? '⏳' : '⟳'}
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -843,7 +989,7 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
         )}
 
         {/* ══ CUSTOMERS ════════════════════════════════════════════════════════ */}
-        {tab === "customers" && <CustomerManager />}
+        {tab === "customers" && <CustomerManager T={T} apiFetch={apiFetch} />}
 
         {/* ══ SCANNER ══════════════════════════════════════════════════════════ */}
         {tab === "scanner" && (
@@ -861,7 +1007,7 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
         {tab === "sentiment" && <Sentiment T={T} apiFetch={apiFetch} />}
 
         {/* ══ TAXATION ═════════════════════════════════════════════════════════ */}
-        {tab === "taxation" && <TaxPage T={T} kpis={kpis} />}
+        {tab === "tax" && <TaxPage T={T} kpis={kpis} categories={categories} />}
 
         {/* ══ LIVE ORDERS ══════════════════════════════════════════════════════ */}
         {tab === "live orders" && (
@@ -881,7 +1027,7 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
                   <tbody>
                     {orders.map((o, i) => (
                       <tr key={o.id} className="row-h" style={{ borderBottom: `1px solid ${T.dimmed}`, animation: i === 0 ? "fadeSlide 0.3s" : "none", transition: "background 0.12s" }}>
-                        <td style={{ padding: "10px", fontFamily: "monospace", fontSize: 11, color: T.brand }}>{o.id}</td>
+                        <td style={{ padding: "10px", fontFamily: "monospace", fontSize: 11, color: T.brand }}>{o.order_id || o.id}</td>
                         <td style={{ padding: "10px", fontWeight: 600, color: T.text }}>{o.customer}</td>
                         <td style={{ padding: "10px", color: T.muted, fontSize: 11 }}>{o.category}</td>
                         <td style={{ padding: "10px", color: T.muted, fontSize: 11 }}>{o.channel}</td>
@@ -894,7 +1040,14 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
                               background: o.status === "delivered" ? `${T.success}18` : o.status === "shipped" ? `${T.info}18` : o.status === "processing" ? `${T.brandAlt}18` : `${T.muted}18`,
                               color:      o.status === "delivered" ? T.success      : o.status === "shipped"   ? T.info       : o.status === "processing" ? T.brandAlt      : T.muted,
                             }}>{o.status}</span>
-                            <button onClick={() => window.open(`/api/orders/${o.id}/invoice`)} style={{ padding: '2px 5px', fontSize: '9px' }}>Inv</button>
+                            <button onClick={async () => {
+                              try {
+                                const r = await apiFetch(`/api/orders/${o.id}/invoice`);
+                                const d = await r.json();
+                                if (d.success && d.invoice) setInvoiceModal(d.invoice);
+                                else alert(d.error || 'Invoice not found');
+                              } catch (e) { alert('Could not load invoice'); }
+                            }} style={{ padding: '2px 5px', fontSize: '9px', cursor: 'pointer' }}>Inv</button>
                           </div>
                         </td>
                       </tr>

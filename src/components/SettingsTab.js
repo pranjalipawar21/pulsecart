@@ -15,8 +15,8 @@ export default function SettingsTab({ T, setThemeName, themeName }) {
   };
 
   return (
-    <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
-      <div style={{ background: T.panel, padding: '30px', borderRadius: '15px', border: `1px solid ${T.border}` }}>
+    <div style={{ padding: '0', width: '100%', margin: '0' }}>
+      <div style={{ background: T.panel, padding: '10px 0', borderRadius: '15px' }}>
         <h3>System Settings</h3>
         
         <div style={{ marginTop: '30px' }}>

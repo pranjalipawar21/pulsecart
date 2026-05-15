@@ -1,5 +1,35 @@
 import { useState, useRef, useEffect } from "react";
 
+// ─── Follow-up patterns ───────────────────────────────────────────────────────
+const FOLLOWUP_PATTERNS = [
+  /tell me more/i, /more detail/i, /explain more/i, /elaborate/i,
+  /^why/i, /^how/i, /what should i do/i, /^details/i, /^more/i,
+  /can you explain/i, /dig deeper/i, /give me more/i,
+];
+function isFollowUp(text) {
+  return FOLLOWUP_PATTERNS.some(p => p.test(text.trim()));
+}
+
+// ─── Deep-detail suffixes for each intent ────────────────────────────────────
+const INTENT_DETAILS = {
+  inventory: (ctx) => {
+    const critical = ctx.inventory?.filter(i => i.status === 'critical') ?? [];
+    if (!critical.length) return 'No critical items right now — all SKUs are above threshold.';
+    return `**Critical SKU Deep-Dive**\n\n${critical.map(i =>
+      `- **${i.product}**: ${i.stock} units left (reorder at ${i.reorder_threshold || i.reorder})\n  → Action: Trigger emergency PO. Expected lead time: 3–7 days.`
+    ).join('\n')}\n\n**Why items go critical:**\n- Demand spike without replenishment\n- Supplier delay / quality rejection\n- System reorder threshold set too low\n\n**Priority fix:** Contact supplier today. Set safety stock = 2× reorder threshold for fast-movers.`;
+  },
+  gmv: ({ kpis, gmvSeries }) => {
+    const trend = gmvSeries?.length > 1 ? (((gmvSeries.at(-1)?.gmv - gmvSeries[0]?.gmv) / gmvSeries[0]?.gmv) * 100).toFixed(1) : 0;
+    return `**GMV Deep-Dive**\n\nPeriod trend: **${trend > 0 ? '+' : ''}${trend}%**\n\n**Revenue levers:**\n- AOV improvement: Bundle 2–3 low-cost items with electronics\n- Conversion uplift: Reduce checkout steps from 4 → 2\n- Return reduction: Mandatory 360° product images\n\n**Net Revenue = GMV − Returns − COGS.** Focus on reducing return rate to improve net margin without increasing GMV.`;
+  },
+  channels: ({ channels }) => {
+    const sorted = [...(channels || [])].sort((a, b) => b.roas - a.roas);
+    return `**Channel Strategy Deep-Dive**\n\n**Reallocation formula:**\n- If ROAS < 2×: Pause spend, audit creatives\n- If ROAS 2–4×: Maintain, optimize landing pages\n- If ROAS > 4×: Scale budget by 30%\n\n**Your top 3:**\n${sorted.slice(0,3).map((c,i) => `${i+1}. ${c.ch}: ${c.roas?.toFixed(2) || 'N/A'}× ROAS`).join('\n')}\n\n*Switch to the Channels tab for full attribution matrix.*`;
+  },
+  default: () => `I can go deeper on: **GMV trends**, **critical inventory SKUs**, **channel ROAS**, **return rate causes**, or **supplier risks**. Which one would you like me to elaborate on?`,
+};
+
 // ─── Rule-based intent engine ─────────────────────────────────────────────────
 // Pure deterministic model — works offline, zero latency, no API key needed.
 // Covers ~85% of expected retail-analytics queries. LLM handles the rest.
@@ -158,11 +188,12 @@ function MsgText({ text, T }) {
 export default function ChatBot({ T, kpis, gmvSeries, categories, channels, regions, inventory, apiFetch }) {
   const [open,     setOpen]     = useState(false);
   const [messages, setMessages] = useState([
-    { role: "assistant", text: "Hi 👋 I'm PulseCart AI. Ask me about GMV, abandonment, inventory, channels, demand forecasting, or tax compliance.", ts: new Date() },
+    { role: "assistant", text: "PulseCart AI Assistant initialized. Ask me about GMV, abandonment, inventory, channels, demand forecasting, or tax compliance.", ts: new Date() },
   ]);
   const [input,    setInput]    = useState("");
   const [loading,  setLoading]  = useState(false);
-  const bottomRef = useRef(null);
+  const bottomRef    = useRef(null);
+  const lastIntentRef = useRef(null); // tracks last matched intent for follow-up
 
   useEffect(() => {
     if (open) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -179,11 +210,22 @@ export default function ChatBot({ T, kpis, gmvSeries, categories, channels, regi
     setMessages(prev => [...prev, userMsg]);
     setLoading(true);
 
-    // 1. Try rule-based engine first
+    // 1. Check for follow-up queries ("tell me more", "explain", "why", etc.)
+    if (isFollowUp(q) && lastIntentRef.current) {
+      await new Promise(r => setTimeout(r, 200));
+      const detailFn = INTENT_DETAILS[lastIntentRef.current.id] || INTENT_DETAILS.default;
+      const answer   = detailFn(ctx);
+      setMessages(prev => [...prev, { role: "assistant", text: answer, ts: new Date(), source: "rule-based" }]);
+      setLoading(false);
+      return;
+    }
+
+    // 2. Try rule-based engine first
     const intent = matchIntent(q);
     if (intent) {
-      await new Promise(r => setTimeout(r, 180)); // tiny delay feels natural
+      await new Promise(r => setTimeout(r, 180));
       const answer = intent.respond(ctx);
+      lastIntentRef.current = intent; // remember for follow-up
       setMessages(prev => [...prev, { role: "assistant", text: answer, ts: new Date(), source: "rule-based" }]);
       setLoading(false);
       return;
@@ -191,38 +233,35 @@ export default function ChatBot({ T, kpis, gmvSeries, categories, channels, regi
 
     // 2. Fall back to Gemini LLM with dashboard context
     if (!apiFetch) {
-      // Mock fallback for live portfolio site without an API key
-      await new Promise(r => setTimeout(r, 1500));
-      const fallbackResponse = `**Gemini AI (Demo Mode)**\n\nBased on the live data context, the current GMV is **${fmtINR(kpis?.gmv ?? 0)}** with a Conversion Rate of **${kpis?.convRate?.toFixed(2) ?? "N/A"}%**. Your top performing channel is **${channels?.length ? [...channels].sort((a, b) => b.roas - a.roas)[0].ch : "N/A"}**.\n\n*Note: This is a simulated response for the portfolio demo because the live API key is hidden. In production, this uses Gemini 2.0 Flash for dynamic natural language queries.*`;
+      await new Promise(r => setTimeout(r, 500));
+      const fallbackResponse = `AI Chat capabilities are currently limited in this environment. Please ensure backend services are correctly configured for full natural language processing.`;
       setMessages(prev => [...prev, {
         role: "assistant",
         text: fallbackResponse,
         ts: new Date(),
-        source: "gemini",
+        source: "system",
       }]);
       setLoading(false);
       return;
     }
 
     try {
+      // Build conversation history in Gemini format
       const history = messages
         .filter(m => m.role !== "assistant" || !m.source)
         .slice(-6)
-        .map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.text }] }));
+        .map(m => ({ role: m.role === "assistant" ? "model" : "user", text: m.text }));
 
       const res = await apiFetch('/api/ai/chat', {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: q,
-          history,
-          contextData: { kpis, channels, inventory }
-        }),
+        body: JSON.stringify({ query: q, history, contextData: { kpis, channels, inventory } }),
       });
 
       if (!res.ok) throw new Error(`API returned ${res.status}`);
       const data = await res.json();
-      setMessages(prev => [...prev, { role: "assistant", text: data.answer || "No response.", ts: new Date(), source: "gemini" }]);
+      const answer = data.answer || data.result || 'I could not generate a response. Please try rephrasing.';
+      setMessages(prev => [...prev, { role: "assistant", text: answer, ts: new Date(), source: data.source || "gemini" }]);
     } catch (err) {
       console.error("ChatBot Gemini error:", err);
       setMessages(prev => [...prev, {
@@ -256,7 +295,7 @@ export default function ChatBot({ T, kpis, gmvSeries, categories, channels, regi
         onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; }}
         title="PulseCart AI"
       >
-        {open ? "✕" : "◎"}
+        {open ? "✕" : "AI"}
       </button>
 
       {/* Chat panel */}

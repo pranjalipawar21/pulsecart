@@ -30,7 +30,7 @@ export default function NotificationsTab({ apiFetch, T, setCount }) {
   };
 
   return (
-    <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
+    <div style={{ width: '100%', margin: '0' }}>
       <h3>Smart Notification Centre</h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '20px' }}>
         {items.length === 0 && <p style={{ color: T.muted }}>No active notifications.</p>}

@@ -81,7 +81,7 @@ function CompBadge({ status, T }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN TAX PAGE
 // ─────────────────────────────────────────────────────────────────────────────
-export default function TaxPage({ T, kpis }) {
+export default function TaxPage({ T, kpis, categories }) {
   const [activeTab,  setActiveTab]  = useState("overview");
   const [selCat,     setSelCat]     = useState("Electronics");
   const [isInter,    setIsInter]    = useState(false);
@@ -92,24 +92,17 @@ export default function TaxPage({ T, kpis }) {
   const CATS = Object.keys(GST_RATES);
   const TAX_TABS = ["overview", "gst", "tds / tcs", "gstr filing", "calculator"];
 
-  // ── Compute tax from live KPI GMV by category (estimated splits) ─────────
+  // ── Compute tax from real category-level revenue from backend ─────────
   const catSplits = useMemo(() => {
-    if (!kpis) return [];
-    // Approximate category GMV from typical Indian e-commerce mix (Redseer 2024)
-    const splits = {
-      "Electronics":   0.34,
-      "Fashion":       0.26,
-      "Health/Beauty": 0.14,
-      "Home/Kitchen":  0.13,
-      "Sports":        0.08,
-      "Books":         0.05,
-    };
-    return Object.entries(splits).map(([cat, pct]) => {
-      const catGMV = kpis.gmv * pct;
-      const tax = computeTax(catGMV, cat);
-      return { cat, gmv: catGMV, ...tax };
+    if (!Array.isArray(categories) || categories.length === 0) return [];
+    
+    return categories.map(c => {
+      const catName = c.cat;
+      const catGMV  = c.revenue || 0;
+      const tax     = computeTax(catGMV, catName);
+      return { cat: catName, gmv: catGMV, ...tax };
     });
-  }, [kpis]);
+  }, [categories]);
 
   const totalGST   = catSplits.reduce((s, c) => s + c.totalGST, 0);
   const totalTCS   = catSplits.reduce((s, c) => s + c.tcs, 0);

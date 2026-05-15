@@ -7,8 +7,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── Basic utilities ──────────────────────────────────────────────────────────
-export const rand    = (min, max) => Math.random() * (max - min) + min;
-export const randInt = (min, max) => Math.floor(rand(min, max + 1));
+export const rand    = (min, max) => min; // Static fallback
+export const randInt = (min, max) => min; // Static fallback
 
 // ─── Category list ────────────────────────────────────────────────────────────
 export const CATEGORIES = [
@@ -240,18 +240,7 @@ const STATUSES    = ["processing","processing","shipped","shipped","delivered","
 let orderCounter = 10000;
 
 export const genOrderEvent = () => {
-  const cat = CATEGORIES[randInt(0, CATEGORIES.length - 1)];
-  const aovMap = { Electronics: 8400, Fashion: 1200, "Health/Beauty": 480, "Home/Kitchen": 2100, Sports: 1900, Books: 390 };
-  const baseAOV = aovMap[cat] || 1500;
-  return {
-    id:       `PC-2024-${++orderCounter}`,
-    customer: `${FIRST_NAMES[randInt(0, FIRST_NAMES.length-1)]} ${LAST_NAMES[randInt(0, LAST_NAMES.length-1)]}`,
-    category: cat,
-    channel:  CHANNELS[randInt(0, CHANNELS.length - 1)],
-    region:   REGIONS[randInt(0, REGIONS.length - 1)],
-    amount:   randInt(Math.round(baseAOV * 0.6), Math.round(baseAOV * 1.6)),
-    status:   STATUSES[randInt(0, STATUSES.length - 1)],
-  };
+  return null; // Stop generating random order events
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -271,8 +260,7 @@ const ACTIVITY_TEMPLATES = [
 ];
 
 export const genActivityEvent = () => {
-  const tpl = ACTIVITY_TEMPLATES[randInt(0, ACTIVITY_TEMPLATES.length - 1)];
-  return { type: tpl.type, msg: tpl.msg(), ts: new Date() };
+  return null; // Stop generating random activity events
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -310,11 +298,10 @@ export const forecastGMV = (series, days = 14) => {
     if (curDay > DAYS_IN_MONTH[curMon % 12]) { curDay = 1; curMon++; }
     const dateStr = `${MONTHS[curMon % 12]} ${curDay}`;
 
-    // Damped linear projection — 60% trend weight, uncertainty widens with horizon
+    // Damped linear projection — 60% trend weight, uncertainty removed
     const trend     = slope * (n + i);
     const base      = trailing7 + trend * 0.6;
-    const noise     = 1 + (Math.random() * 0.06 - 0.03); // ±3% — forecast uncertainty
-    const predicted = Math.max(0, Math.round(base * noise));
+    const predicted = Math.max(0, Math.round(base));
 
     return { date: dateStr, predicted };
   });
@@ -337,8 +324,7 @@ export const genDemandForecast = () => {
   return baselines.map(({ cat, actual }) => ({
     cat,
     actual,
-    // ±8% band — realistic for Random Forest + ARIMA ensemble on Indian SKU data
-    predicted: Math.round(actual * (1 + (Math.random() * 0.16 - 0.08))),
+    predicted: actual, // Remove random noise
   }));
 };
 
