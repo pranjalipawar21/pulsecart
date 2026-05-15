@@ -28,7 +28,6 @@ import {
   genCategoryData, genChannelData, genRegionData, genInventoryAlerts,
   genOrderEvent, forecastGMV, genAbandonmentCohorts, genDemandForecast,
   detectAnomalies, genActivityEvent, toCSV,
-  fetchForexRate, fetchIndiaMacro, fetchCryptoPrices,
   genKPIs, genGMVSeries,
 } from "./data/mockData";
 
@@ -226,12 +225,7 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
   const [activity,    setActivity]    = useState(() => Array.from({ length: 6 }, (_, i) => ({ ...genActivityEvent(), id: i, ts: new Date(Date.now() - i * 38000) })));
   const [abandonment]                 = useState(genAbandonmentCohorts);
   const [demand]                      = useState(genDemandForecast);
-  const [discount,    setDiscount]    = useState(0);
   const [reorderState, setReorderState] = useState({});
-
-  const [liveGMV,    setLiveGMV]    = useState(0);
-  const [liveOrders, setLiveOrders] = useState(0);
-  const [liveUsers,  setLiveUsers]  = useState(0);
 
   const tickRef      = useRef(0);
   const btcChangeRef = useRef(0);
@@ -252,8 +246,6 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
         if (kpiRes.ok)  {
           const data = await kpiRes.json();
           setKpis(data);
-          setLiveGMV(data.gmv || 0);
-          setLiveOrders(data.orderCount || 0);
         }
         if (gmvRes.ok)  {
           const d = await gmvRes.json();
@@ -316,22 +308,6 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
     setLoadingHealth(false);
   };
 
-  // ── Macro Data Fetching (Live Rates) ──────────────────────────────────────
-  useEffect(() => {
-    async function loadRealData() {
-      const [fx, mc, cr] = await Promise.all([
-        fetchWithBackoff(fetchForexRate,    { rate: 83.5, source: "fallback" }),
-        fetchWithBackoff(fetchIndiaMacro,   { gdpGrowth: 6.8, inflation: 5.4, gdpYear: "2023", source: "fallback" }),
-        fetchWithBackoff(fetchCryptoPrices, { btc: 67000, btcChange: 0, source: "fallback" }),
-      ]);
-      setForex(fx); setMacro(mc); setCrypto(cr);
-      btcChangeRef.current = cr.btcChange ?? 0;
-      setApiReady({ forex: fx.source!=="fallback", macro: mc.source!=="fallback", crypto: cr.source!=="fallback" });
-    }
-    loadRealData();
-    const iv = setInterval(loadRealData, 300_000);
-    return () => clearInterval(iv);
-  }, []);
 
   // ── Live Activity Feed (Empty if no backend data) ─────────────────────────
   useEffect(() => {
@@ -1091,7 +1067,7 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
         {tab === "ai reports" && <AIReportsTab apiFetch={apiFetch} T={T} />}
 
         {/* ══ NOTIFICATIONS ════════════════════════════════════════════════════ */}
-        {tab === "notifications" && <NotificationsTab apiFetch={apiFetch} T={T} setCount={setLiveOrders} />}
+        {tab === "notifications" && <NotificationsTab apiFetch={apiFetch} T={T} />}
 
         {/* ══ SETTINGS ═════════════════════════════════════════════════════════ */}
         {tab === "settings" && <SettingsTab T={T} setThemeName={setThemeName} themeName={themeName} />}
