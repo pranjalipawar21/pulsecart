@@ -1,3 +1,4 @@
+// PulseCart — Refreshed Build Trigger
 import { useState, useEffect, useRef } from "react";
 import Sentiment from "./components/Sentiment";
 import TaxPage from "./components/TaxPage";
