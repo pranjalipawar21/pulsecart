@@ -169,6 +169,28 @@ Every endpoint (excluding login) requires a valid Bearer JWT: `Authorization: Be
 
 ---
 
+## 🌐 Production Deployment Strategy
+
+To deploy PulseCart in a fully functional, public production environment, implement the following distributed cloud architecture:
+
+1. **Static Frontend Hosting (GitHub Pages / Vercel / Netlify)**:
+   - Compile the React assets using `.env.production` pointing to your live backend endpoint.
+   - Deploy the build directory statically.
+   
+2. **Dedicated Backend App Service (Render / Railway / Fly.io)**:
+   - Host the Express server node.
+   - Configure environment variables (`JWT_SECRET`, database connections, and `CLIENT_ORIGIN` matching your hosted frontend URL).
+
+3. **Managed Relational Database (Railway / Aiven / PlanetScale)**:
+   - Provision a cloud-hosted **MySQL** database instance.
+   - Run the initial SQL imports (`schema.sql` and `seed.sql`) remotely.
+   - Grant permission access to your hosted backend IP addresses.
+
+4. **Websocket Portability**:
+   - Ensure the Socket.IO setup correctly communicates over standard HTTPS/WSS protocols on the live server routes.
+
+---
+
 ## ⚠️ Known Limitations & Design Rationale
 
 - **Standalone Standalone Runtime**: The sentiment analysis sandbox employs a highly efficient local JavaScript lexical analyzer. While this does not capture the semantic nuance of a full-scale LLM, it allows the entire system to run 100% locally and offline without requiring external API keys, rate-limits, or internet connectivity.

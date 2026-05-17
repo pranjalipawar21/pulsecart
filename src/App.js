@@ -150,7 +150,25 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
             </thead>
             <tbody>
               {inventory.length === 0 && (
-                <tr><td colSpan="9" style={{ padding:40, textAlign:'center', color:T.muted }}>No products in inventory. Add your first product via the API.</td></tr>
+                <tr>
+                  <td colSpan="9" style={{ padding: 40, textAlign: 'center' }}>
+                    <div style={{ display: 'inline-block', maxWidth: '500px', margin: '0 auto', textAlign: 'left', background: T.dimmed, border: `1px dashed ${T.border}`, borderRadius: '12px', padding: '24px 28px' }}>
+                      <div style={{ fontSize: '24px', marginBottom: '10px', textAlign: 'center' }}>🗄️</div>
+                      <h4 style={{ color: T.text, fontSize: '14px', fontWeight: 700, marginBottom: '8px', textAlign: 'center' }}>Database Connection or Seed Required</h4>
+                      <p style={{ color: T.muted, fontSize: '12px', lineHeight: '1.6', marginBottom: '14px' }}>
+                        The inventory table is currently empty. Make sure your local MySQL server is running, and that you have imported the schema and seed scripts using PowerShell or Command Prompt:
+                      </p>
+                      <div style={{ background: T.panel, padding: '10px 14px', borderRadius: '8px', border: `1px solid ${T.border}`, fontFamily: 'monospace', fontSize: '11px', color: T.brand, overflowX: 'auto', marginBottom: '14px' }}>
+                        # Import database via PowerShell:<br />
+                        Get-Content database/schema.sql | mysql -u root -p<br />
+                        Get-Content database/seed.sql | mysql -u root -p
+                      </div>
+                      <p style={{ color: T.muted, fontSize: '11px', fontStyle: 'italic', textAlign: 'center' }}>
+                        Once imported, press the "Refresh" button at the top-right to pull live product rows.
+                      </p>
+                    </div>
+                  </td>
+                </tr>
               )}
               {inventory.map(item => (
                 <tr key={item.id} style={{ borderBottom:`1px solid ${T.dimmed}`, transition:'background 0.12s' }}
@@ -267,7 +285,7 @@ function Dashboard({ user, isOwner, apiFetch, logout }) {
       `}</style>
 
       {/* Settings Drawer */}
-      <div style={{ position:'fixed', top:0, right:showSettings?0:'-400px', width:380, height:'100vh', background:T.panel, zIndex:1000, boxShadow:`-10px 0 30px ${T.shadow}`, transition:'right 0.3s ease-in-out', padding:30, borderLeft:`1px solid ${T.border}`, overflowY:'auto' }}>
+      <div style={{ position:'fixed', top:0, right:showSettings?0:'-400px', width:'100%', maxWidth:'380px', height:'100vh', background:T.panel, zIndex:1000, boxShadow:`-10px 0 30px ${T.shadow}`, transition:'right 0.3s ease-in-out', padding:30, borderLeft:`1px solid ${T.border}`, overflowY:'auto' }}>
         <div style={{ display:'flex', justifyContent:'space-between', marginBottom:24 }}>
           <h2 style={{ fontSize:18, fontWeight:700, color:T.text }}>Settings</h2>
           <button onClick={() => setShowSettings(false)} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:T.text }}>✕</button>
