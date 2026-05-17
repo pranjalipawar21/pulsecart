@@ -1,7 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
-  PieChart, Pie, Cell, ResponsiveContainer,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Legend
+  PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RTooltip
 } from "recharts";
 
 // ─── Sentiment badge ──────────────────────────────────────────────────────────
@@ -26,7 +25,7 @@ export default function Sentiment({ T, apiFetch }) {
   const [liveResult, setLiveResult] = useState(null);
   const [uploading, setUploading] = useState(false);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       const res = await apiFetch('/api/sentiment/stats');
       const data = await res.json();
@@ -34,11 +33,11 @@ export default function Sentiment({ T, apiFetch }) {
     } catch (err) {
       console.error("Stats fetch failed:", err);
     }
-  };
+  }, [apiFetch]);
 
   useEffect(() => {
     fetchStats();
-  }, [apiFetch]);
+  }, [fetchStats]);
 
   const handleLiveAnalyze = async () => {
     if (!liveText.trim()) return;

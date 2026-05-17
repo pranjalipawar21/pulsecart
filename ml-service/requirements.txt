@@ -1,6 +1,0 @@
-fastapi
-uvicorn
-textblob
-vaderSentiment
-nltk
-python-multipart

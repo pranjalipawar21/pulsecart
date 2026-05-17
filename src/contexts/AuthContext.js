@@ -1,82 +1,72 @@
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback } from 'react';
 
 const AuthContext = createContext(null);
 
-const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
+const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 export function AuthProvider({ children }) {
-  const [user,  setUser]  = useState(() => {
-    try { return JSON.parse(localStorage.getItem("pc_user")) || null; } catch { return null; }
-  });
-  const [token, setToken] = useState(() => localStorage.getItem("pc_token") || null);
+    const [user,  setUser]  = useState(() => {
+        try { return JSON.parse(localStorage.getItem('pc_user')) || null; } catch { return null; }
+    });
+    const [token, setToken] = useState(() => localStorage.getItem('pc_token') || null);
 
-  const login = useCallback(async (username, password) => {
-    try {
-      const res = await fetch(`${API}/api/auth/login`, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ username, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Login failed");
-      localStorage.setItem("pc_token", data.token);
-      localStorage.setItem("pc_user",  JSON.stringify(data.user));
-      setToken(data.token);
-      setUser(data.user);
-      return data.user;
-    } catch (err) {
-      // Fallback for live demo without backend
-      if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
-        console.warn("Backend unavailable. Simulating login for demo purposes.");
-        if (password !== "pranjal@123") {
-          throw new Error("Invalid credentials");
+    /**
+     * Authenticate against the real Express backend.
+     * No fallback — if the backend is unreachable, login fails transparently.
+     */
+    const login = useCallback(async (username, password) => {
+        const res = await fetch(`${API}/api/auth/login`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ username, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Login failed');
+
+        localStorage.setItem('pc_token', data.token);
+        localStorage.setItem('pc_user',  JSON.stringify(data.user));
+        setToken(data.token);
+        setUser(data.user);
+        return data.user;
+    }, []);
+
+    const logout = useCallback(() => {
+        localStorage.removeItem('pc_token');
+        localStorage.removeItem('pc_user');
+        setToken(null);
+        setUser(null);
+    }, []);
+
+    /**
+     * Fetch wrapper that injects the Bearer JWT on every API call.
+     * Automatically logs out if the server returns 401.
+     */
+    const apiFetch = useCallback(async (path, opts = {}) => {
+        const headers = {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...opts.headers,
+        };
+        const res = await fetch(`${API}${path}`, { ...opts, headers });
+        if (res.status === 401) {
+            logout();
+            throw new Error('Session expired. Please log in again.');
         }
-        const mockUser = { id: 1, username, role: username === "owner" ? "owner" : "staff", full_name: "Demo User" };
-        const mockToken = "mock_token_demo_123";
-        localStorage.setItem("pc_token", mockToken);
-        localStorage.setItem("pc_user", JSON.stringify(mockUser));
-        setToken(mockToken);
-        setUser(mockUser);
-        return mockUser;
-      }
-      throw err;
-    }
-  }, []);
+        return res;
+    }, [token, logout]);
 
-  const logout = useCallback(() => {
-    localStorage.removeItem("pc_token");
-    localStorage.removeItem("pc_user");
-    setToken(null);
-    setUser(null);
-  }, []);
-
-  /** Fetch wrapper that injects the Bearer token */
-  const apiFetch = useCallback(async (path, opts = {}) => {
-    try {
-      const res = await fetch(`${API}${path}`, {
-        ...opts,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization:  token ? `Bearer ${token}` : "",
-          ...opts.headers,
-        },
-      });
-      if (res.status === 401) { logout(); throw new Error("Session expired"); }
-      return res;
-    } catch (err) {
-      if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
-        console.warn(`Backend unavailable for ${path}. Returning mock data.`);
-        return { ok: true, json: async () => ({}) };
-      }
-      throw err;
-    }
-  }, [token, logout]);
-
-  return (
-    <AuthContext.Provider value={{ user, token, login, logout, apiFetch, isOwner: user?.role === "owner" }}>
-      {children}
-    </AuthContext.Provider>
-  );
+    return (
+        <AuthContext.Provider value={{
+            user,
+            token,
+            login,
+            logout,
+            apiFetch,
+            isOwner: user?.role === 'owner',
+        }}>
+            {children}
+        </AuthContext.Provider>
+    );
 }
 
 export const useAuth = () => useContext(AuthContext);
