@@ -8,6 +8,7 @@ router.use(verifyToken);
 
 // ─── Read — both owner and staff ──────────────────────────────────────────────
 router.get('/',               inventoryController.getAllProducts);
+router.get('/categories',     inventoryController.getCategories);
 router.get('/low-stock',      inventoryController.getLowStockProducts);
 router.get('/export',         inventoryController.exportProducts);
 router.get('/movements',      inventoryController.getMovements);

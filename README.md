@@ -1,201 +1,282 @@
-# 🛒 PulseCart — Full-Stack Retail Intelligence Platform
+# PulseCart — Retail Intelligence & Inventory Management System
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/pranjalipawar21/pulsecart)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D%2018.0.0-blue.svg)](https://nodejs.org)
-[![React Version](https://img.shields.io/badge/react-18.3.1-blue.svg)](https://react.dev)
-[![MySQL](https://img.shields.io/badge/database-MySQL-blue.svg)](https://www.mysql.com)
-[![Socket.IO](https://img.shields.io/badge/realtime-Socket.IO-lightgrey.svg)](https://socket.io)
-
-PulseCart is a production-grade, retail intelligence and inventory management platform engineered for modern e-commerce. It utilizes a high-performance **React 18** client with adaptive glassmorphism design, a hardened **Node.js/Express** MVC backend, persistent **MySQL** storage, event-driven socket updates powered by **Socket.IO**, and real-time visualization dashboards powered by **Chart.js**.
-
-All mock data layers, static generator fallbacks, and unverified mock pipelines have been entirely replaced with active, production-grade database connections and atomic operational endpoints.
+A full-stack retail dashboard built with **React.js**, **Node.js/Express**, and **MySQL**.
 
 ---
 
-## 🚀 Core Architectural Highlights
+## 🚀 Quick Start
 
-1. **Structured Node.js/Express MVC Backend**: Absolute separation of persistent data models, route handlers, custom authentication middleware, and business controller modules.
-2. **Secure JWT Authentication & RBAC**: Stateless token-based logins gating individual permissions for `owner` and `staff` hierarchies with strict session persistence.
-3. **Atomic Inventory Mutators**: Pessimistic transaction locking (`SELECT ... FOR UPDATE`) executing multi-query stock adjustments to secure data integrity under heavy concurrent threads.
-4. **Interactive Chart.js Visualizations**: Line and bar aggregate charts showing actual category-wise capital allocations and cumulative day-by-day SKU stock levels.
-5. **Real-Time Synchronizations**: Instant state synchronizations via WebSockets with **Socket.IO** client-server connections, dispatching mutations dynamically without polling.
-6. **Self-Contained NLP Sentiment Engine**: Local keyword-driven review processing and sentiment score aggregation, eliminating third-party API dependencies or slow external Python processes.
-7. **Production Express Hardening**: Incorporates standard security configurations using `helmet` headers, strictly configured `cors` origin restriction policies, and IP traffic rate limiters.
+### Prerequisites
+- Node.js v18+
+- MySQL 8.0+
+- npm v9+
 
----
-
-## 📂 System Topology
+### Step 1 — Clone & Install
 
 ```bash
-pulsecart/
-├── src/                    # React Frontend App
-│   ├── components/
-│   │   ├── AnalyticsTab.js # Chart.js Dashboard (SKU stock trends, Category values, Audit log)
-│   │   ├── Sentiment.js    # Review Analysis Matrix & Sandbox (Recharts-powered)
-│   │   ├── Login.js        # Responsive Brand Gateway (light/dark adaptivity)
-│   │   ├── SettingsTab.js  # Feature toggles & global controls
-│   │   └── TaxPage.js      # Ledger summaries
-│   ├── contexts/
-│   │   └── AuthContext.js  # Secure state with auto token injection & 401 session-guards
-│   ├── App.js              # Stripped of all mocks; 6 high-fidelity tabs
-│   └── index.js
-├── backend/                # Node.js MVC Server
-│   ├── config/             # Connection pooling configurations (mysql2/promise)
-│   ├── middleware/
-│   │   ├── auth.js         # JWT validators & role authorization guards
-│   │   └── errorHandler.js # Standardized JSON error response handler
-│   ├── models/
-│   │   ├── userModel.js    # Bcrypt-backed account persistence
-│   │   └── inventoryModel.js# Atomic transactional updates & movements
-│   ├── controllers/
-│   │   ├── authController.js    # Token generation & credentials verifier
-│   │   ├── inventoryController.js # CRUD actions + reorders + adjustments
-│   │   ├── analyticsController.js # SQL aggregations (SUM, COUNT, GROUP BY)
-│   │   └── sentimentController.js # Local lexical analyzer & statistics
-│   ├── routes/
-│   │   ├── authRoutes.js
-│   │   ├── inventoryRoutes.js
-│   │   ├── analyticsRoutes.js
-│   │   └── sentimentRoutes.js
-│   ├── server.js           # Security gateway (helmet, rate-limiting, strict CORS, Socket.IO)
-│   └── .env.example
-├── database/               # SQL Initialization
-│   ├── schema.sql          # DB Schemas & optimal multi-column indexes
-│   └── seed.sql            # Bcrypt-secured profiles & detailed movement history
-└── package.json            # One-command developer workflow (concurrently)
+# Install frontend dependencies (root)
+npm install
+
+# Install backend dependencies
+cd backend && npm install && cd ..
 ```
 
----
+### Step 2 — Configure Environment
 
-## ⚡ Quick Start Setup
+```bash
+# Copy the backend env example
+cp backend/.env.example backend/.env
+```
 
-### 1. Persistent Database Setup
-Ensure that **MySQL** is running locally on port `3306`, then import the schema and seeds:
+Edit `backend/.env` with your MySQL credentials:
+
+```env
+PORT=5000
+NODE_ENV=development
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=YOUR_MYSQL_PASSWORD_HERE
+DB_NAME=pulsecart
+DB_PORT=3306
+JWT_SECRET=your_64_char_random_hex_here
+CLIENT_ORIGIN=http://localhost:3000
+```
+
+> **Generate JWT secret:** `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`
+
+### Step 3 — Import Database
+
+Open MySQL (PowerShell or Command Prompt):
+
+```powershell
+# Import schema (creates all tables)
+Get-Content database/schema.sql | mysql -u root -p
+
+# Import seed data (creates users, 22 products, sales records, alerts)
+Get-Content database/seed.sql | mysql -u root -p
+```
+
+Or using the MySQL CLI directly:
+
 ```bash
 mysql -u root -p < database/schema.sql
 mysql -u root -p < database/seed.sql
 ```
 
-### 2. Secure Configuration
-Copy the environment template in `/backend`:
-```bash
-cd backend
-cp .env.example .env
-```
-Open `.env` and configure your credentials. **Make sure to set a cryptographically secure `JWT_SECRET` key.**
+### Step 4 — Start the Application
 
-### 3. Build & Run (Single-Command Launch)
-From the root workspace directory, install dependencies and launch the integrated dev server:
 ```bash
-# Install frontend + backend packages
-npm install
-cd backend && npm install
-cd ..
-
-# Spin up React + Express simultaneously
+# Start both frontend (port 3000) and backend (port 5000) together
 npm run dev
 ```
 
-*   **Frontend Client**: `http://localhost:3000`
-*   **Secure API gateway**: `http://localhost:5000`
+Or start separately:
+
+```bash
+# Terminal 1 — Backend
+cd backend && npm run dev
+
+# Terminal 2 — Frontend
+npm start
+```
+
+Open: **http://localhost:3000**
 
 ---
 
-## 🧪 Testing Commands
+## 🔑 Default Login Credentials
 
-The repository features automated frontend testing pipelines. Run these commands from the root directory to verify performance:
-```bash
-# Execute frontend unit test suites
-npm run test
+| Role  | Username | Password     | Access |
+|-------|----------|-------------|--------|
+| 👑 Owner | `owner` | `pranjal@123` | Full access: Dashboard, Analytics, Reports, Staff |
+| 🧑 Staff | `staff` | `pranjal@123` | Inventory, Sales, Alerts, Settings |
+| 🧑 Staff | `staff2` | `pranjal@123` | Inventory, Sales, Alerts, Settings |
 
-# Check for code linting violations
-npm run lint
+---
 
-# Perform full production React builds
-npm run build
+## 📁 Project Structure
+
+```
+pulsecart/
+├── backend/
+│   ├── config/
+│   │   └── db.js                 # MySQL connection pool
+│   ├── controllers/
+│   │   ├── authController.js     # Login, register, staff list
+│   │   ├── inventoryController.js # Product CRUD, export
+│   │   ├── analyticsController.js # KPIs, charts, trends
+│   │   ├── salesController.js    # Sales CRUD + summary
+│   │   ├── alertsController.js   # Reorder alerts
+│   │   ├── reportsController.js  # CSV download generators
+│   │   └── settingsController.js # Store settings
+│   ├── middleware/
+│   │   ├── auth.js               # JWT verifyToken + requireOwner
+│   │   └── errorHandler.js       # Centralized error handler
+│   ├── models/
+│   │   ├── userModel.js          # User DB operations
+│   │   ├── inventoryModel.js     # Product + movement operations
+│   │   └── salesModel.js         # Sales + stock decrement
+│   ├── routes/
+│   │   ├── authRoutes.js
+│   │   ├── inventoryRoutes.js
+│   │   ├── analyticsRoutes.js
+│   │   ├── salesRoutes.js
+│   │   ├── alertsRoutes.js
+│   │   ├── reportsRoutes.js
+│   │   └── settingsRoutes.js
+│   ├── server.js
+│   ├── .env.example
+│   └── package.json
+├── database/
+│   ├── schema.sql                # All table definitions
+│   └── seed.sql                  # 22 products, users, sales, alerts
+├── src/
+│   ├── components/
+│   │   ├── Login.js
+│   │   └── Register.js
+│   ├── contexts/
+│   │   └── AuthContext.js        # JWT auth + apiFetch wrapper
+│   ├── pages/
+│   │   ├── Dashboard.js          # KPI cards + Chart.js charts
+│   │   ├── Inventory.js          # Full CRUD with modals
+│   │   ├── Sales.js              # Record sales + history
+│   │   ├── Alerts.js             # Reorder alerts management
+│   │   ├── Analytics.js          # Owner-only charts
+│   │   ├── Reports.js            # CSV download buttons
+│   │   ├── Staff.js              # Staff management
+│   │   └── Settings.js           # Store config + theme toggle
+│   ├── services/
+│   │   └── api.js                # Centralized API service
+│   ├── App.js                    # Sidebar layout + routing
+│   └── index.css                 # Design system (light/dark)
+└── package.json
 ```
 
 ---
 
-## 📸 Screenshots & Visual Flows
+## 🔌 API Routes
 
-Here are the key interfaces of the PulseCart system:
-
-### 1. Owner Analytics Dashboard
-*A visually stunning panel highlighting total units, capital valuations, urgent threshold indicators, SKU-level cumulative stock lines, and GSTR-filing metrics.*
-
-### 2. Live Inventory Control
-*Gives administrators interactive buttons to trigger automatic replenishment PO triggers, log manual stock-in/stock-out adjustments with audit comments, and receive live Socket.IO update cards.*
-
-### 3. Review Intelligence Sandbox
-*Allows staff to paste review snippets for instant NLP classification or upload bulk review spreadsheets directly into MySQL.*
-
----
-
-## 🔐 Credentials & Role Workflows
-
-The database seeds two default accounts. All passwords are secure bcrypt hashes (cost factor = 12):
-
-*   **Username**: `owner` | **Password**: `pranjal@123`
-    *   *Permissions*: View Full Analytics, Categories financial charts, trigger reorders, adjust stocks, modify product listings, download CSV exports.
-*   **Username**: `staff` | **Password**: `pranjal@123`
-    *   *Permissions*: View live inventory, execute sentiment sandbox. Restricted from accessing owner-only APIs (403 Forbidden).
-
----
-
-## 🔗 Production API Documentation
-
-Every endpoint (excluding login) requires a valid Bearer JWT: `Authorization: Bearer <token>`
-
-| Method | Endpoint | Access | Description |
-|---|---|---|---|
-| **POST** | `/api/auth/login` | Public | Validate credentials, generate JWT |
-| **GET** | `/api/auth/me` | Staff / Owner | Return active user profiles |
-| **GET** | `/api/products` | Staff / Owner | Fetch products + auto calculated stock status |
-| **GET** | `/api/products/:id` | Staff / Owner | Retrieve specific product details |
-| **POST** | `/api/products` | Owner | Create new product listing |
-| **PUT** | `/api/products/:id` | Owner | Update SKU details |
-| **DELETE** | `/api/products/:id` | Owner | Remove listing from catalog |
-| **POST** | `/api/inventory/:id/reorder` | Owner | replenishment trigger (+ Socket.IO emit) |
-| **POST** | `/api/inventory/:id/adjust` | Owner | signed stock adjustment (+ Socket.IO emit) |
-| **GET** | `/api/inventory/movements` | Staff / Owner | Paginated audit trail history |
-| **GET** | `/api/analytics/kpis` | Owner | Group aggregated KPI values |
-| **GET** | `/api/analytics/categories`| Owner | Group category valuation totals |
-| **GET** | `/api/analytics/low-stock` | Staff / Owner | Urgent stock alerts |
-| **GET** | `/api/analytics/sku-trends` | Owner | Daily SKU transaction history |
-| **POST** | `/api/sentiment/live` | Staff / Owner | Local lexical NLP sandbox |
-| **POST** | `/api/sentiment/upload` | Staff / Owner | CSV review file bulk processing |
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `POST` | `/api/auth/login` | Public | Login → JWT token |
+| `POST` | `/api/auth/register` | Public | Register new user |
+| `GET`  | `/api/auth/me` | JWT | Get current user |
+| `GET`  | `/api/auth/staff` | Owner | List all staff |
+| `GET`  | `/api/products` | JWT | All products |
+| `POST` | `/api/products` | Owner | Create product |
+| `PUT`  | `/api/products/:id` | Owner | Update product |
+| `DELETE` | `/api/products/:id` | Owner | Delete product |
+| `GET`  | `/api/inventory/categories` | JWT | All categories |
+| `POST` | `/api/inventory/:id/reorder` | Owner | Reorder 50 units |
+| `GET`  | `/api/analytics/summary` | Owner | Dashboard KPIs |
+| `GET`  | `/api/analytics/charts` | Owner | Chart data |
+| `GET`  | `/api/analytics/low-stock` | JWT | Low stock list |
+| `GET`  | `/api/sales` | JWT | Sales history |
+| `POST` | `/api/sales` | JWT | Record a sale |
+| `GET`  | `/api/sales/summary` | JWT | Today's summary |
+| `GET`  | `/api/alerts` | JWT | Reorder alerts |
+| `PUT`  | `/api/alerts/:id/complete` | Owner | Mark alert done |
+| `POST` | `/api/alerts/generate` | Owner | Scan & create alerts |
+| `GET`  | `/api/reports/inventory` | Owner | CSV download |
+| `GET`  | `/api/reports/sales` | Owner | CSV download |
+| `GET`  | `/api/reports/low-stock` | Owner | CSV download |
+| `GET`  | `/api/settings` | JWT | Get settings |
+| `PUT`  | `/api/settings` | Owner | Save settings |
+| `GET`  | `/api/health` | Public | Server health check |
 
 ---
 
-## 🌐 Production Deployment Strategy
+## ✅ Feature Testing Checklist
 
-To deploy PulseCart in a fully functional, public production environment, implement the following distributed cloud architecture:
+### Authentication
+- [ ] Login as owner (`owner` / `pranjal@123`) → redirects to Dashboard
+- [ ] Login as staff (`staff` / `pranjal@123`) → sees only Inventory, Sales, Alerts, Settings
+- [ ] Register new account → can login immediately
 
-1. **Static Frontend Hosting (GitHub Pages / Vercel / Netlify)**:
-   - Compile the React assets using `.env.production` pointing to your live backend endpoint.
-   - Deploy the build directory statically.
-   
-2. **Dedicated Backend App Service (Render / Railway / Fly.io)**:
-   - Host the Express server node.
-   - Configure environment variables (`JWT_SECRET`, database connections, and `CLIENT_ORIGIN` matching your hosted frontend URL).
+### Inventory
+- [ ] Products table loads with 22 items
+- [ ] Add product → appears in table
+- [ ] Edit product → changes saved to DB
+- [ ] Delete product → removed from table
+- [ ] Search by name/SKU → filters correctly
+- [ ] Filter "Low Stock" → shows critical/low items
+- [ ] Reorder button → adds 50 units, clears alert
 
-3. **Managed Relational Database (Railway / Aiven / PlanetScale)**:
-   - Provision a cloud-hosted **MySQL** database instance.
-   - Run the initial SQL imports (`schema.sql` and `seed.sql`) remotely.
-   - Grant permission access to your hosted backend IP addresses.
+### Sales
+- [ ] Record Sale modal opens
+- [ ] Dropdown shows available products with stock count
+- [ ] Quantity > stock → shows error "Insufficient stock"
+- [ ] Sale recorded → stock decrements in inventory
+- [ ] Today's revenue KPI updates
+- [ ] Sales history table shows all records
 
-4. **Websocket Portability**:
-   - Ensure the Socket.IO setup correctly communicates over standard HTTPS/WSS protocols on the live server routes.
+### Alerts
+- [ ] Alerts page shows pending reorder alerts
+- [ ] Mark as completed → status changes to DONE
+- [ ] Generate Alerts → scans all low-stock products
+
+### Analytics (Owner only)
+- [ ] Best-Selling Products bar chart renders
+- [ ] Monthly Revenue trend line chart renders
+- [ ] Category Revenue doughnut chart renders
+- [ ] Profit Estimate chart renders
+
+### Reports (Owner only)
+- [ ] Download Inventory CSV → file downloads with all products
+- [ ] Download Sales CSV → file downloads with sales history
+- [ ] Download Low Stock CSV → file downloads with low-stock items
+
+### Settings
+- [ ] Dark mode toggle works (persists on refresh)
+- [ ] Save Settings → updates DB
+- [ ] Staff cannot modify settings (read-only form)
 
 ---
 
-## ⚠️ Known Limitations & Design Rationale
+## 🗄️ Database Tables
 
-- **Standalone Standalone Runtime**: The sentiment analysis sandbox employs a highly efficient local JavaScript lexical analyzer. While this does not capture the semantic nuance of a full-scale LLM, it allows the entire system to run 100% locally and offline without requiring external API keys, rate-limits, or internet connectivity.
-- **Single Currency Assumption**: All ledger sheets and financial valuations are structured around the Indian Rupee (₹/INR) utilizing standard GST/TCS/TDS splits derived from the Finance Act 2024.
+| Table | Description |
+|-------|-------------|
+| `users` | User accounts with role (owner/staff) |
+| `categories` | Product categories |
+| `products` | Full product catalog with cost_price, supplier_name |
+| `sales` | Sales records linked to products and staff |
+| `inventory_movements` | Full audit trail of all stock changes |
+| `reorder_alerts` | Auto-generated low-stock alerts |
+| `reorder_requests` | Manual reorder requests |
+| `settings` | Store configuration |
+| `product_reviews` | Customer reviews (for sentiment analysis) |
 
 ---
 
-**Developed for Portfolio Excellence by Pranjali Pawar**
+## 🌐 Deployment (Replit / Render + Railway)
+
+### Backend (Render / Replit)
+Set environment variables:
+```
+PORT=5000
+DB_HOST=<railway_mysql_host>
+DB_USER=<railway_user>
+DB_PASSWORD=<railway_password>
+DB_NAME=pulsecart
+JWT_SECRET=<64_char_hex>
+CLIENT_ORIGIN=https://your-frontend-url.com
+```
+
+### Frontend (Vercel / GitHub Pages)
+Set environment variable:
+```
+REACT_APP_API_URL=https://your-backend-url.com
+```
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 18, Chart.js 4, react-chartjs-2, Socket.IO client |
+| Backend | Node.js 18, Express 4, Socket.IO |
+| Database | MySQL 8.0 with mysql2/promise |
+| Auth | JWT (jsonwebtoken) + bcryptjs |
+| Security | helmet, express-rate-limit, CORS |

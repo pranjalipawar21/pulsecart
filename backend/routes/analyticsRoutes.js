@@ -3,16 +3,17 @@ const router = express.Router();
 const analyticsController = require('../controllers/analyticsController');
 const { verifyToken, requireOwner } = require('../middleware/auth');
 
-// All analytics routes require authentication
 router.use(verifyToken);
 
-// KPIs and detailed analytics — owner only
+// Owner-only routes
 router.get('/kpis',       requireOwner, analyticsController.getKPIs);
+router.get('/summary',    requireOwner, analyticsController.getSummary);
+router.get('/charts',     requireOwner, analyticsController.getCharts);
 router.get('/categories', requireOwner, analyticsController.getCategories);
 router.get('/sku-trends', requireOwner, analyticsController.getSkuTrends);
 router.get('/movements',  requireOwner, analyticsController.getMovements);
 
-// Low-stock: accessible by both owner and staff (needed for their alerts)
+// Both roles (for staff alerts panel)
 router.get('/low-stock',  analyticsController.getLowStock);
 
 module.exports = router;

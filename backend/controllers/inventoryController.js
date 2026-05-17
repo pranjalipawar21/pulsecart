@@ -2,6 +2,13 @@ const Inventory = require('../models/inventoryModel');
 
 // ─── Read ─────────────────────────────────────────────────────────────────────
 
+exports.getCategories = async (req, res, next) => {
+    try {
+        const categories = await Inventory.getCategories();
+        res.json({ success: true, data: categories });
+    } catch (err) { next(err); }
+};
+
 exports.getAllProducts = async (req, res, next) => {
     try {
         const products = await Inventory.getAll();

@@ -1,53 +1,55 @@
 const db = require('../config/db');
 
 const Inventory = {
-    // ─── Read ──────────────────────────────────────────────────────────────────
-
     getAll: async () => {
         const [rows] = await db.execute(`
-            SELECT 
-                p.id,
-                p.sku,
+            SELECT
+                p.id, p.sku,
                 p.product_name AS product,
                 p.quantity     AS stock,
                 p.low_stock_threshold AS reorder_threshold,
-                p.price,
+                p.price, p.cost_price,
+                p.supplier_name,
                 p.location,
                 c.name AS category,
-                CASE 
+                c.id   AS category_id,
+                CASE
                     WHEN p.quantity <= FLOOR(p.low_stock_threshold / 2) THEN 'critical'
-                    WHEN p.quantity <= p.low_stock_threshold            THEN 'low'
+                    WHEN p.quantity <= p.low_stock_threshold             THEN 'low'
                     ELSE 'healthy'
                 END AS status
-            FROM products p 
+            FROM products p
             LEFT JOIN categories c ON p.category_id = c.id
-            ORDER BY FIELD(status, 'critical', 'low', 'healthy'), p.quantity ASC
+            ORDER BY FIELD(
+                CASE
+                    WHEN p.quantity <= FLOOR(p.low_stock_threshold / 2) THEN 'critical'
+                    WHEN p.quantity <= p.low_stock_threshold             THEN 'low'
+                    ELSE 'healthy'
+                END, 'critical', 'low', 'healthy'), p.quantity ASC
         `);
         return rows;
     },
 
     getById: async (id) => {
-        const [rows] = await db.execute('SELECT * FROM products WHERE id = ?', [id]);
+        const [rows] = await db.execute(`
+            SELECT p.*, c.name AS category
+            FROM products p LEFT JOIN categories c ON p.category_id = c.id
+            WHERE p.id = ?
+        `, [id]);
         return rows[0];
     },
 
     getLowStock: async () => {
         const [rows] = await db.execute(`
-            SELECT 
-                p.id,
-                p.sku,
-                p.product_name AS product,
-                p.quantity     AS stock,
-                p.low_stock_threshold AS reorder_threshold,
-                p.price,
-                p.location,
-                c.name AS category,
-                CASE 
-                    WHEN p.quantity <= FLOOR(p.low_stock_threshold / 2) THEN 'critical'
-                    WHEN p.quantity <= p.low_stock_threshold            THEN 'low'
-                    ELSE 'healthy'
-                END AS status
-            FROM products p 
+            SELECT p.id, p.sku, p.product_name AS product,
+                   p.quantity AS stock, p.low_stock_threshold AS reorder_threshold,
+                   p.price, p.location, c.name AS category,
+                   CASE
+                       WHEN p.quantity <= FLOOR(p.low_stock_threshold / 2) THEN 'critical'
+                       WHEN p.quantity <= p.low_stock_threshold             THEN 'low'
+                       ELSE 'healthy'
+                   END AS status
+            FROM products p
             LEFT JOIN categories c ON p.category_id = c.id
             WHERE p.quantity <= p.low_stock_threshold
             ORDER BY p.quantity ASC
@@ -55,22 +57,15 @@ const Inventory = {
         return rows;
     },
 
-    /**
-     * Paginated movement history across all products (or for a single product).
-     * @param {number|null} productId — null returns all movements
-     * @param {number} limit
-     */
+    getCategories: async () => {
+        const [rows] = await db.execute('SELECT id, name FROM categories ORDER BY name');
+        return rows;
+    },
+
     getMovements: async (productId = null, limit = 50) => {
         const [rows] = await db.execute(`
-            SELECT 
-                im.id,
-                im.change_amount,
-                im.movement_type,
-                im.notes,
-                im.created_at,
-                p.sku,
-                p.product_name AS product,
-                u.username     AS performed_by
+            SELECT im.id, im.change_amount, im.movement_type, im.notes, im.created_at,
+                   p.sku, p.product_name AS product, u.username AS performed_by
             FROM inventory_movements im
             JOIN products p ON im.product_id = p.id
             LEFT JOIN users u ON im.performed_by = u.id
@@ -81,25 +76,26 @@ const Inventory = {
         return rows;
     },
 
-    // ─── Write ─────────────────────────────────────────────────────────────────
-
     create: async (data) => {
-        const { sku, product_name, category_id, price, quantity, low_stock_threshold, location } = data;
+        const { sku, product_name, category_id, price, cost_price, quantity, low_stock_threshold, supplier_name, location } = data;
         const [result] = await db.execute(
-            `INSERT INTO products (sku, product_name, category_id, price, quantity, low_stock_threshold, location)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [sku, product_name, category_id || null, price, quantity || 0, low_stock_threshold || 10, location || 'Main Warehouse']
+            `INSERT INTO products (sku, product_name, category_id, price, cost_price, quantity, low_stock_threshold, supplier_name, location)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [sku, product_name, category_id || null, price, cost_price || 0, quantity || 0,
+             low_stock_threshold || 10, supplier_name || '', location || 'Main Warehouse']
         );
         return result.insertId;
     },
 
     update: async (id, data) => {
-        const { product_name, category_id, price, quantity, low_stock_threshold, location } = data;
+        const { product_name, category_id, price, cost_price, quantity, low_stock_threshold, supplier_name, location } = data;
         const [result] = await db.execute(
-            `UPDATE products 
-             SET product_name=?, category_id=?, price=?, quantity=?, low_stock_threshold=?, location=? 
+            `UPDATE products
+             SET product_name=?, category_id=?, price=?, cost_price=?, quantity=?,
+                 low_stock_threshold=?, supplier_name=?, location=?
              WHERE id=?`,
-            [product_name, category_id || null, price, quantity, low_stock_threshold, location, id]
+            [product_name, category_id || null, price, cost_price || 0, quantity,
+             low_stock_threshold, supplier_name || '', location, id]
         );
         return result.affectedRows > 0;
     },
@@ -109,36 +105,19 @@ const Inventory = {
         return result.affectedRows > 0;
     },
 
-    /**
-     * Atomically adjust stock by `delta` and log the movement.
-     * Positive delta = stock in (purchase / reorder / return)
-     * Negative delta = stock out (sale / damage / write-off)
-     * 
-     * @param {number} productId
-     * @param {number} delta        — signed integer
-     * @param {string} type         — movement_type enum value
-     * @param {string} note
-     * @param {number|null} userId  — performed_by user ID
-     */
     adjustStock: async (productId, delta, type, note = '', userId = null) => {
         const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
-
-            // Prevent negative stock
             const [rows] = await connection.execute('SELECT quantity FROM products WHERE id = ? FOR UPDATE', [productId]);
             if (!rows[0]) throw Object.assign(new Error('Product not found'), { statusCode: 404 });
-
             const newQty = rows[0].quantity + delta;
             if (newQty < 0) throw Object.assign(new Error('Insufficient stock'), { statusCode: 400 });
-
             await connection.execute('UPDATE products SET quantity = ? WHERE id = ?', [newQty, productId]);
-
             const [mvResult] = await connection.execute(
                 'INSERT INTO inventory_movements (product_id, change_amount, movement_type, notes, performed_by) VALUES (?, ?, ?, ?, ?)',
                 [productId, delta, type, note, userId]
             );
-
             await connection.commit();
             return { newQuantity: newQty, movementId: mvResult.insertId };
         } catch (err) {
@@ -149,26 +128,25 @@ const Inventory = {
         }
     },
 
-    /**
-     * Reorder: add `amount` units, log as 'reorder', insert into reorder_requests.
-     */
     reorder: async (productId, amount, note = 'Manual reorder from dashboard', userId = null) => {
         const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
-
             await connection.execute('UPDATE products SET quantity = quantity + ? WHERE id = ?', [amount, productId]);
-
             const [invMv] = await connection.execute(
                 'INSERT INTO inventory_movements (product_id, change_amount, movement_type, notes, performed_by) VALUES (?, ?, ?, ?, ?)',
                 [productId, amount, 'reorder', note, userId]
             );
-
             await connection.execute(
                 'INSERT INTO reorder_requests (product_id, requested_qty, triggered_by, note) VALUES (?, ?, ?, ?)',
                 [productId, amount, userId, note]
             );
-
+            // Clear any pending alerts for this product
+            await connection.execute(
+                `UPDATE reorder_alerts SET status = 'completed', completed_at = NOW()
+                 WHERE product_id = ? AND status = 'pending'`,
+                [productId]
+            );
             await connection.commit();
             return { movementId: invMv.insertId };
         } catch (err) {

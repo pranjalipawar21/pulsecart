@@ -1,12 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
-const { verifyToken } = require('../middleware/auth');
+const { verifyToken, requireOwner } = require('../middleware/auth');
 
-// POST /api/auth/login
-router.post('/login', authController.login);
+// Public routes
+router.post('/login',    authController.login);
+router.post('/register', authController.register);
 
-// GET /api/auth/me  (protected)
-router.get('/me', verifyToken, authController.me);
+// Protected routes
+router.get('/me',    verifyToken, authController.me);
+router.get('/staff', verifyToken, requireOwner, authController.getAllStaff);
 
 module.exports = router;
