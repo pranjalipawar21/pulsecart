@@ -54,20 +54,12 @@ const authLimiter = rateLimit({
 });
 app.use('/api/auth/login', authLimiter);
 
-const corsOptions = {
-    origin: function (origin, callback) {
-        // Allow requests with no origin (like mobile apps) OR if explicitly allowed OR if wildcard '*' is used
-        if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
-    },
+app.use(cors({
+    origin: true, // Allow all origins dynamically
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
-};
-app.use(cors(corsOptions));
+}));
 
 app.use(express.json({ limit: '10mb' }));
 
