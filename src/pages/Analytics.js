@@ -6,7 +6,6 @@ import api from '../services/api';
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, PointElement, LineElement);
 
 const COLORS = ['#E8620A','#F59E0B','#059669','#0284C7','#8B5CF6','#EC4899','#14B8A6'];
-const fmt = n => { n = Number(n)||0; if(n>=1e7) return `₹${(n/1e7).toFixed(2)}Cr`; if(n>=1e5) return `₹${(n/1e5).toFixed(1)}L`; if(n>=1e3) return `₹${(n/1e3).toFixed(1)}K`; return `₹${Math.round(n).toLocaleString('en-IN')}`; };
 
 const chartDefaults = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } };
 const gridOpts = { x: { grid: { display: false } }, y: { grid: { color: 'rgba(128,128,128,.1)' } } };
