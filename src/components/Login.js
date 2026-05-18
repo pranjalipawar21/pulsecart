@@ -109,12 +109,6 @@ export default function Login({ onRegister }) {
               Register
             </button>
           </div>
-
-          <div style={{ marginTop: 24, padding: '12px 14px', background: '#0F1117', borderRadius: 8, border: '1px solid #2D3748' }}>
-            <p style={{ fontSize: 11, color: '#64748B', marginBottom: 6, fontWeight: 600, letterSpacing: '.05em' }}>DEMO CREDENTIALS</p>
-            <p style={{ fontSize: 12, color: '#94A3B8' }}>👑 Owner: <span style={{ color: '#E8620A', fontWeight: 600 }}>owner</span> / <span style={{ color: '#E8620A', fontWeight: 600 }}>pranjal@123</span></p>
-            <p style={{ fontSize: 12, color: '#94A3B8', marginTop: 4 }}>🧑 Staff: <span style={{ color: '#F59E0B', fontWeight: 600 }}>staff</span> / <span style={{ color: '#F59E0B', fontWeight: 600 }}>pranjal@123</span></p>
-          </div>
         </div>
       </div>
     </div>

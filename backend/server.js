@@ -56,8 +56,8 @@ app.use('/api/auth/login', authLimiter);
 
 const corsOptions = {
     origin: function (origin, callback) {
-        // Allow requests with no origin (like mobile apps or curl requests)
-        if (!origin || allowedOrigins.includes(origin)) {
+        // Allow requests with no origin (like mobile apps) OR if explicitly allowed OR if wildcard '*' is used
+        if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
             callback(null, true);
         } else {
             callback(new Error('Not allowed by CORS'));
