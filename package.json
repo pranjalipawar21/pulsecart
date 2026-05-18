@@ -4,7 +4,6 @@
   "private": true,
   "description": "PulseCart — Retail Intelligence Dashboard for Indian E-commerce",
   "author": "Pranjali Pawar",
-  "homepage": "https://pranjalipawar21.github.io/pulsecart",
   "scripts": {
     "start": "react-scripts start",
     "dev": "concurrently \"npm start\" \"npm run dev:backend\"",
